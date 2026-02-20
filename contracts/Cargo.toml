@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "contracts/deposit",
+    "contracts/prize-pool",
+    "contracts/lucky-stake-pool",
+]
+resolver = "2"
