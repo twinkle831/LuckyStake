@@ -1,5 +1,20 @@
 "use client"
 
+/**
+ * context/wallet-context.tsx
+ *
+ * Drop-in replacement. Preserves EVERY existing field:
+ *   address, isConnected, isConnecting, balance, network
+ *   connect(), disconnect(), truncateAddress()
+ *
+ * What's new:
+ *   walletType        — "freighter" | "xbull" | null
+ *   setConnection()   — called by ConnectWalletModal after real wallet connects
+ *
+ * The old connect() no longer simulates — it just logs a warning.
+ * Wire your "Connect Wallet" button to open the modal instead.
+ */
+
 import {
   createContext,
   useContext,
@@ -9,115 +24,150 @@ import {
   type ReactNode,
 } from "react"
 
+import {
+  type WalletType,
+  type WalletConnection,
+  authenticateWithBackend,
+} from "@/lib/wallet-connectors"
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export interface WalletState {
   address: string | null
   isConnected: boolean
   isConnecting: boolean
-  balance: string
-  network: string
+  balance: string          // human-readable USDC balance e.g. "1,234.56"
+  network: string          // human-readable label e.g. "Stellar Testnet"
+  walletType: WalletType | null
 }
 
 interface WalletContextType extends WalletState {
   connect: () => Promise<void>
   disconnect: () => void
+  /** Called by ConnectWalletModal after wallet popup approves */
+  setConnection: (conn: WalletConnection) => Promise<void>
+  token: string | null
 }
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
 
-/**
- * Simulates a Freighter wallet connection.
- * In production this would call the Freighter API / Stellar SDK.
- */
-function generateStellarAddress(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-  let addr = "G"
-  for (let i = 0; i < 55; i++) {
-    addr += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return addr
+const DEFAULT: WalletState = {
+  address: null,
+  isConnected: false,
+  isConnecting: false,
+  balance: "0",
+  network: "Stellar Testnet",
+  walletType: null,
 }
 
-function truncateAddress(addr: string): string {
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
+const SS_KEY = "luckystake_wallet"
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [wallet, setWallet] = useState<WalletState>({
-    address: null,
-    isConnected: false,
-    isConnecting: false,
-    balance: "0",
-    network: "Stellar Testnet",
-  })
+  const [wallet, setWallet] = useState<WalletState>(DEFAULT)
+  const [token, setToken] = useState<string | null>(null)
 
   // Restore session on mount
   useEffect(() => {
-    const saved = globalThis?.sessionStorage?.getItem("luckystake_wallet")
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
+    try {
+      const raw = sessionStorage.getItem(SS_KEY)
+      if (!raw) return
+      const saved = JSON.parse(raw)
+      if (saved?.address) {
         setWallet({
-          address: parsed.address,
+          ...DEFAULT,
+          address: saved.address,
           isConnected: true,
-          isConnecting: false,
-          balance: parsed.balance ?? "10,000.00",
-          network: "Stellar Testnet",
+          balance: saved.balance ?? "0",
+          network: saved.network ?? "Stellar Testnet",
+          walletType: saved.walletType ?? null,
         })
-      } catch {
-        // ignore
+        setToken(saved.token ?? null)
       }
-    }
+    } catch { /* ignore */ }
   }, [])
 
-  const connect = useCallback(async () => {
+  /**
+   * Called by ConnectWalletModal right after wallet extension popup approves.
+   * 1. Fetches real USDC balance from Stellar Horizon via backend
+   * 2. Authenticates with backend → gets JWT
+   * 3. Updates context + persists session
+   */
+  const setConnection = useCallback(async (conn: WalletConnection) => {
     setWallet((prev) => ({ ...prev, isConnecting: true }))
 
-    // Simulate wallet popup delay
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+    // Fetch real balance from backend (calls Stellar Horizon)
+    let usdcBalance = "0"
+    try {
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+      const res = await fetch(`${API}/api/wallet/${conn.address}`)
+      if (res.ok) {
+        const data = await res.json()
+        usdcBalance = data.usdcBalance
+          ? Number(data.usdcBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "0"
+      }
+    } catch { /* backend not running, fine */ }
 
-    const address = generateStellarAddress()
-    const balance = (Math.random() * 15000 + 1000).toFixed(2)
+    // Authenticate with backend → JWT
+    const jwt = await authenticateWithBackend(conn.address)
+    setToken(jwt)
+
+    const networkLabel = conn.network.includes("Public Global")
+      ? "Stellar Mainnet"
+      : "Stellar Testnet"
 
     const newState: WalletState = {
-      address,
+      address: conn.address,
       isConnected: true,
       isConnecting: false,
-      balance: Number(balance).toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      network: "Stellar Testnet",
+      balance: usdcBalance,
+      network: networkLabel,
+      walletType: conn.walletType,
     }
 
     setWallet(newState)
-    globalThis?.sessionStorage?.setItem(
-      "luckystake_wallet",
-      JSON.stringify({ address, balance: newState.balance })
+
+    // Persist so page refresh restores the session
+    try {
+      sessionStorage.setItem(SS_KEY, JSON.stringify({ ...newState, token: jwt }))
+    } catch { /* ignore */ }
+  }, [])
+
+  /**
+   * Legacy connect() — kept for backward compatibility.
+   * If you call this directly, open the ConnectWalletModal instead.
+   */
+  const connect = useCallback(async () => {
+    console.warn(
+      "[WalletContext] connect() called directly — open <ConnectWalletModal> instead"
     )
   }, [])
 
   const disconnect = useCallback(() => {
-    setWallet({
-      address: null,
-      isConnected: false,
-      isConnecting: false,
-      balance: "0",
-      network: "Stellar Testnet",
-    })
-    globalThis?.sessionStorage?.removeItem("luckystake_wallet")
+    setWallet(DEFAULT)
+    setToken(null)
+    try { sessionStorage.removeItem(SS_KEY) } catch { /* ignore */ }
   }, [])
 
   return (
-    <WalletContext.Provider value={{ ...wallet, connect, disconnect }}>
+    <WalletContext.Provider value={{ ...wallet, token, connect, disconnect, setConnection }}>
       {children}
     </WalletContext.Provider>
   )
 }
 
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function useWallet() {
-  const context = useContext(WalletContext)
-  if (!context) throw new Error("useWallet must be used inside WalletProvider")
-  return context
+  const ctx = useContext(WalletContext)
+  if (!ctx) throw new Error("useWallet must be used inside <WalletProvider>")
+  return ctx
 }
 
-export { truncateAddress }
+export function truncateAddress(addr: string): string {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}

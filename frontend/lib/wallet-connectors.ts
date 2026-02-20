@@ -1,25 +1,17 @@
 /**
  * lib/wallet-connectors.ts
  *
- * @stellar/freighter-api v6 — CORRECT API
- *
- * v6 changes from v5:
- *  ❌ getPublicKey()  →  ✅ getAddress()     (returns { address } not { publicKey })
- *  ❌ FreighterApi class  →  ✅ still named exports, no class
- *  ✅ isConnected(), requestAccess(), getNetworkDetails(), signTransaction() unchanged
- *
- * xBull uses window.xBullSDK (injected by Chrome extension, no npm package).
+ * @stellar/freighter-api v6 — named exports, getAddress() not getPublicKey()
+ * xBull — window.xBullSDK (injected by Chrome extension)
  */
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type WalletType = "freighter" | "xbull";
 
 export interface WalletConnection {
-  address: string;        // Stellar public key (G...)
+  address: string;
   walletType: WalletType;
-  network: string;        // network passphrase
-  networkName: string;    // "TESTNET" | "PUBLIC"
+  network: string;       // full passphrase
+  networkName: string;   // "TESTNET" | "PUBLIC"
 }
 
 export interface WalletError {
@@ -41,46 +33,24 @@ export const WALLET_INSTALL_URLS = {
   },
 } as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 export function isChromeBrowser(): boolean {
   if (typeof window === "undefined") return false;
-  return (
-    /Chrome/.test(navigator.userAgent) &&
-    /Google Inc/.test(navigator.vendor) &&
-    !(window as any).opr
-  );
+  return /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
 }
 
 function installUrl(wallet: WalletType): string {
-  return isChromeBrowser()
-    ? WALLET_INSTALL_URLS[wallet].chrome
-    : WALLET_INSTALL_URLS[wallet].website;
-}
-
-function makeError(code: WalletError["code"], message: string, wallet?: WalletType): WalletError {
-  return { code, message, ...(wallet ? { installUrl: installUrl(wallet) } : {}) };
+  return isChromeBrowser() ? WALLET_INSTALL_URLS[wallet].chrome : WALLET_INSTALL_URLS[wallet].website;
 }
 
 // ─── Freighter v6 ─────────────────────────────────────────────────────────────
-//
-// Docs: https://docs.freighter.app/docs/guide/usingfreighterwebapp/
-//
-// Named exports (same as v5 except getPublicKey → getAddress):
-//   isConnected()        → { isConnected: boolean }
-//   isAllowed()          → { isAllowed: boolean }
-//   requestAccess()      → { address: string } | { error: string }
-//   getAddress()         → { address: string } | { error: string }
-//   getNetworkDetails()  → { network, networkPassphrase, networkUrl, ... }
-//   signTransaction(xdr, { networkPassphrase }) → { signedTxXdr } | { error }
+// v6 named exports — NO class, NO getPublicKey
+// requestAccess() → opens popup → returns { address } or { error }
 
 export async function isFreighterInstalled(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   try {
-    // Dynamic import — safe in Next.js (no SSR crash)
     const { isConnected } = await import("@stellar/freighter-api");
     const result = await isConnected();
-    // v6 returns { isConnected: boolean }
     return result?.isConnected === true;
   } catch {
     return false;
@@ -88,68 +58,41 @@ export async function isFreighterInstalled(): Promise<boolean> {
 }
 
 export async function connectFreighter(): Promise<WalletConnection> {
-  const installed = await isFreighterInstalled();
-  if (!installed) {
-    throw makeError(
-      "NOT_INSTALLED",
-      "Freighter is not installed. Install it from the Chrome Web Store.",
-      "freighter"
-    );
+  if (!(await isFreighterInstalled())) {
+    throw { code: "NOT_INSTALLED", message: "Freighter is not installed.", installUrl: installUrl("freighter") } as WalletError;
   }
 
   try {
     const { requestAccess, getNetworkDetails } = await import("@stellar/freighter-api");
 
-    // requestAccess() opens the Freighter browser extension popup.
-    // User sees a permission dialog and clicks "Connect".
-    // Returns { address: "G..." } on approval or { error: "..." } on rejection.
-    const accessResult = await requestAccess();
+    // Opens the Freighter browser extension popup
+    const result = await requestAccess();
 
-    if ("error" in accessResult && accessResult.error) {
-      throw makeError("REJECTED", "Connection was rejected in Freighter.");
+    if ("error" in result && result.error) {
+      throw { code: "REJECTED", message: "Connection rejected in Freighter." } as WalletError;
     }
 
-    const address = (accessResult as any).address as string;
-    if (!address) {
-      throw makeError("UNKNOWN", "Freighter did not return an address.");
-    }
+    const address = (result as any).address as string;
+    if (!address) throw { code: "UNKNOWN", message: "Freighter did not return an address." } as WalletError;
 
-    // Get network details (non-fatal if fails)
     let networkPassphrase = "Test SDF Network ; September 2015";
     let networkName = "TESTNET";
     try {
       const net = await getNetworkDetails();
       networkPassphrase = net?.networkPassphrase ?? networkPassphrase;
       networkName = net?.network ?? networkName;
-    } catch {
-      /* use defaults */
-    }
+    } catch { /* use defaults */ }
 
     return { address, walletType: "freighter", network: networkPassphrase, networkName };
   } catch (err: any) {
-    if (err?.code) throw err; // already a WalletError
-
-    const msg: string = err?.message ?? "";
-    if (/reject|cancel|den/i.test(msg)) {
-      throw makeError("REJECTED", "Connection cancelled in Freighter.");
-    }
-    throw makeError("UNKNOWN", msg || "Failed to connect to Freighter.");
+    if (err?.code) throw err;
+    if (/reject|cancel|den/i.test(err?.message ?? "")) throw { code: "REJECTED", message: "Connection cancelled." } as WalletError;
+    throw { code: "UNKNOWN", message: err?.message || "Failed to connect to Freighter." } as WalletError;
   }
 }
 
-export async function signWithFreighter(xdr: string, networkPassphrase: string): Promise<string> {
-  const { signTransaction } = await import("@stellar/freighter-api");
-  const result = await signTransaction(xdr, { networkPassphrase });
-  if ("error" in result && result.error) throw new Error(String(result.error));
-  return (result as any).signedTxXdr as string;
-}
-
 // ─── xBull ────────────────────────────────────────────────────────────────────
-//
-// xBull injects window.xBullSDK when its Chrome extension is active.
-// API: sdk.connect({ canRequestPublicKey, canRequestSign })
-//      sdk.getPublicKey()  → string
-//      sdk.sign({ xdr })   → string (signed XDR)
+// window.xBullSDK injected by Chrome extension — no npm package
 
 export function isXBullInstalled(): boolean {
   return typeof window !== "undefined" && typeof (window as any).xBullSDK !== "undefined";
@@ -157,56 +100,64 @@ export function isXBullInstalled(): boolean {
 
 export async function connectXBull(): Promise<WalletConnection> {
   if (!isXBullInstalled()) {
-    throw makeError(
-      "NOT_INSTALLED",
-      "xBull is not installed. Install it from the Chrome Web Store.",
-      "xbull"
-    );
+    throw { code: "NOT_INSTALLED", message: "xBull is not installed.", installUrl: installUrl("xbull") } as WalletError;
   }
 
   try {
     const sdk = (window as any).xBullSDK;
-
-    // sdk.connect() opens the xBull extension popup.
-    // User sees a permission dialog and clicks "Allow".
-    await sdk.connect({ canRequestPublicKey: true, canRequestSign: true });
-
+    await sdk.connect({ canRequestPublicKey: true, canRequestSign: true }); // opens xBull popup
     const address: string = await sdk.getPublicKey();
-    if (!address) throw makeError("REJECTED", "xBull did not return an address.");
+    if (!address) throw { code: "REJECTED", message: "xBull did not return an address." } as WalletError;
 
     const isMainnet = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet";
-    const networkPassphrase = isMainnet
-      ? "Public Global Stellar Network ; September 2015"
-      : "Test SDF Network ; September 2015";
-
     return {
       address,
       walletType: "xbull",
-      network: networkPassphrase,
+      network: isMainnet ? "Public Global Stellar Network ; September 2015" : "Test SDF Network ; September 2015",
       networkName: isMainnet ? "PUBLIC" : "TESTNET",
     };
   } catch (err: any) {
     if (err?.code) throw err;
-
-    const msg: string = err?.message ?? "";
-    if (/reject|deny|cancel/i.test(msg)) {
-      throw makeError("REJECTED", "Connection cancelled in xBull.");
-    }
-    throw makeError("UNKNOWN", msg || "Failed to connect to xBull.");
+    if (/reject|deny|cancel/i.test(err?.message ?? "")) throw { code: "REJECTED", message: "Connection cancelled in xBull." } as WalletError;
+    throw { code: "UNKNOWN", message: err?.message || "Failed to connect to xBull." } as WalletError;
   }
 }
 
-export async function signWithXBull(xdr: string): Promise<string> {
-  const sdk = (window as any).xBullSDK;
-  return sdk.sign({ xdr });
-}
-
-// ─── Unified entry point ──────────────────────────────────────────────────────
+// ─── Unified connect ──────────────────────────────────────────────────────────
 
 export async function connectWallet(type: WalletType): Promise<WalletConnection> {
-  switch (type) {
-    case "freighter": return connectFreighter();
-    case "xbull":     return connectXBull();
-    default:          throw makeError("UNKNOWN", "Unknown wallet type");
+  return type === "freighter" ? connectFreighter() : connectXBull();
+}
+
+// ─── Backend auth flow ────────────────────────────────────────────────────────
+// Called automatically after wallet connects.
+// Returns JWT from your backend, or null if backend is unreachable (dev fallback).
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+export async function authenticateWithBackend(address: string): Promise<string | null> {
+  try {
+    // Step 1: Get nonce for this address
+    const challengeRes = await fetch(`${API}/api/auth/challenge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publicKey: address }),
+    });
+    if (!challengeRes.ok) throw new Error(`Challenge failed: ${challengeRes.status}`);
+    const { nonce } = await challengeRes.json();
+
+    // Step 2: Send address + nonce back → get JWT
+    const verifyRes = await fetch(`${API}/api/auth/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publicKey: address, nonce }),
+    });
+    if (!verifyRes.ok) throw new Error(`Verify failed: ${verifyRes.status}`);
+    const { token } = await verifyRes.json();
+
+    return token;
+  } catch (err) {
+    console.warn("[LuckyStake] Backend auth skipped (is the backend running?):", (err as Error).message);
+    return null;
   }
 }

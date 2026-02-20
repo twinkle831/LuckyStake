@@ -1,179 +1,142 @@
-const StellarSdk = require("@stellar/stellar-sdk");
-
-const isMainnet = process.env.STELLAR_NETWORK === "mainnet";
-
-const server = new StellarSdk.Horizon.Server(
-  process.env.STELLAR_HORIZON_URL ||
-    (isMainnet
-      ? "https://horizon.stellar.org"
-      : "https://horizon-testnet.stellar.org")
-);
-
-const networkPassphrase = isMainnet
-  ? StellarSdk.Networks.PUBLIC
-  : StellarSdk.Networks.TESTNET;
-
 /**
- * Verify a Stellar wallet challenge signature.
- * Flow:
- *   1. Frontend requests a challenge nonce (/api/auth/challenge)
- *   2. User signs challenge with their wallet (Freighter/xBull)
- *   3. Frontend sends signed XDR back (/api/auth/verify)
- *   4. Backend verifies the signature here
+ * routes/deposits.js
+ *
+ * Right now: records deposits in memory.
+ * Smart contract hook is clearly marked — swap it in later.
+ *
+ * POST /api/deposits          — record a deposit (JWT required)
+ * GET  /api/deposits/my       — get my deposits (JWT required)
+ * POST /api/deposits/:id/withdraw — initiate withdrawal (JWT required)
  */
-async function verifyWalletSignature(publicKey, signedXDR, originalChallenge) {
+
+const express = require("express");
+const router = express.Router();
+const { v4: uuidv4 } = require("uuid");
+const auth = require("../middleware/auth");
+const store = require("../services/store");
+
+// ─── POST /api/deposits ───────────────────────────────────────────────────────
+// Body: { poolType: "daily"|"weekly"|"monthly", amount: number, txHash: string }
+//
+// txHash is the Stellar transaction hash the user submitted before calling this.
+// When you add smart contracts, you'll verify txHash on-chain here.
+router.post("/", auth, async (req, res, next) => {
   try {
-    // Validate public key format
-    StellarSdk.Keypair.fromPublicKey(publicKey);
+    const { poolType, amount, txHash } = req.body;
 
-    // Parse the signed transaction
-    const transaction = StellarSdk.TransactionBuilder.fromXDR(
-      signedXDR,
-      networkPassphrase
-    );
-
-    // Verify it's the same challenge
-    const txMemo = transaction.memo?.value?.toString();
-    if (!txMemo || !txMemo.includes(originalChallenge)) {
-      throw new Error("Challenge mismatch");
+    // ── Validation ─────────────────────────────────────────────────────────
+    if (!poolType || amount == null || !txHash) {
+      return res.status(400).json({ error: "poolType, amount, and txHash are required" });
+    }
+    if (!["daily", "weekly", "monthly"].includes(poolType)) {
+      return res.status(400).json({ error: "poolType must be 'daily', 'weekly', or 'monthly'" });
+    }
+    if (typeof amount !== "number" || amount < 1) {
+      return res.status(400).json({ error: "amount must be a number ≥ 1 (USDC)" });
     }
 
-    // Verify signature
-    const keypair = StellarSdk.Keypair.fromPublicKey(publicKey);
-    const txHash = transaction.hash();
+    // ── TODO: Smart Contract Hook ───────────────────────────────────────────
+    // When you're ready to integrate Stellar smart contracts, replace this
+    // comment block with:
+    //
+    //   const { server } = require("../services/stellar");
+    //   const tx = await server.transactions().transaction(txHash).call();
+    //   // verify tx.successful === true
+    //   // verify the destination matches your pool contract address
+    //   // verify the amount matches
+    //
+    // Until then, we trust the txHash the client sends (fine for dev).
 
-    const isValid = transaction.signatures.some((sig) => {
-      try {
-        return keypair.verify(txHash, sig.signature());
-      } catch {
-        return false;
-      }
-    });
-
-    if (!isValid) throw new Error("Invalid signature");
-    return true;
-  } catch (err) {
-    throw new Error(`Signature verification failed: ${err.message}`);
-  }
-}
-
-/**
- * Build a challenge transaction for wallet signing.
- * Returns XDR that the wallet signs.
- */
-async function buildChallengeTransaction(serverPublicKey, clientPublicKey, nonce) {
-  const serverKeypair = StellarSdk.Keypair.fromPublicKey(serverPublicKey);
-
-  const account = await server.loadAccount(serverPublicKey).catch(() => null);
-
-  // If treasury not funded yet, use a dummy sequence (for dev)
-  const sourceAccount = account || {
-    accountId: () => serverPublicKey,
-    sequenceNumber: () => "0",
-    incrementSequenceNumber: () => {},
-  };
-
-  const tx = new StellarSdk.TransactionBuilder(
-    account || new StellarSdk.Account(serverPublicKey, "0"),
-    {
-      fee: StellarSdk.BASE_FEE,
-      networkPassphrase,
-    }
-  )
-    .addOperation(
-      StellarSdk.Operation.manageData({
-        name: "luckystake_auth",
-        value: `${clientPublicKey}:${nonce}`,
-        source: clientPublicKey,
-      })
-    )
-    .addMemo(StellarSdk.Memo.text(nonce))
-    .setTimeout(300) // 5 min expiry
-    .build();
-
-  return tx.toXDR();
-}
-
-/**
- * Get account details + balances from Stellar network
- */
-async function getAccountDetails(publicKey) {
-  try {
-    const account = await server.loadAccount(publicKey);
-    const xlmBalance = account.balances.find((b) => b.asset_type === "native");
-    const otherBalances = account.balances.filter(
-      (b) => b.asset_type !== "native"
-    );
-
-    return {
-      publicKey,
-      sequence: account.sequence,
-      xlmBalance: xlmBalance ? parseFloat(xlmBalance.balance) : 0,
-      otherBalances: otherBalances.map((b) => ({
-        asset: `${b.asset_code}:${b.asset_issuer}`,
-        balance: parseFloat(b.balance),
-      })),
-      subentryCount: account.subentry_count,
-      homeDomain: account.home_domain || null,
+    // ── Record deposit ──────────────────────────────────────────────────────
+    const id = uuidv4();
+    const deposit = {
+      id,
+      publicKey: req.publicKey,
+      poolType,
+      amount,
+      txHash,
+      tickets: Math.floor(amount), // 1 ticket per USDC
+      depositedAt: new Date().toISOString(),
+      withdrawnAt: null,
     };
-  } catch (err) {
-    if (err.response?.status === 404) {
-      return { publicKey, exists: false, xlmBalance: 0 };
+
+    store.deposits.set(id, deposit);
+
+    // Update pool totals
+    const pool = store.pools.get(poolType);
+    pool.totalDeposited += amount;
+    pool.participants = countUniqueParticipants(poolType);
+
+    // Update user totals
+    const user = store.users.get(req.publicKey);
+    if (user) {
+      user.totalDeposited += amount;
+      user.tickets += deposit.tickets;
     }
-    throw err;
-  }
-}
 
-/**
- * Get recent transactions for an account
- */
-async function getAccountTransactions(publicKey, limit = 10) {
-  const txs = await server
-    .transactions()
-    .forAccount(publicKey)
-    .order("desc")
-    .limit(limit)
-    .call();
+    // Broadcast real-time update to any open dashboard tabs
+    const { broadcast } = require("../services/websocket");
+    broadcast("pool_update", { poolType, pool });
 
-  return txs.records.map((tx) => ({
-    id: tx.id,
-    hash: tx.hash,
-    ledger: tx.ledger,
-    createdAt: tx.created_at,
-    memo: tx.memo,
-    operationCount: tx.operation_count,
-    successful: tx.successful,
-  }));
-}
-
-/**
- * Submit a signed transaction to the Stellar network
- */
-async function submitTransaction(signedXDR) {
-  try {
-    const tx = StellarSdk.TransactionBuilder.fromXDR(signedXDR, networkPassphrase);
-    const result = await server.submitTransaction(tx);
-    return {
-      success: true,
-      hash: result.hash,
-      ledger: result.ledger,
-    };
+    res.status(201).json({ message: "Deposit recorded", deposit });
   } catch (err) {
-    const extras = err.response?.data?.extras;
-    throw new Error(
-      extras?.result_codes?.transaction ||
-        extras?.result_codes?.operations?.[0] ||
-        err.message
-    );
+    next(err);
   }
+});
+
+// ─── GET /api/deposits/my ─────────────────────────────────────────────────────
+router.get("/my", auth, (req, res) => {
+  const deposits = Array.from(store.deposits.values())
+    .filter((d) => d.publicKey === req.publicKey)
+    .sort((a, b) => new Date(b.depositedAt) - new Date(a.depositedAt));
+
+  const totalActive = deposits
+    .filter((d) => !d.withdrawnAt)
+    .reduce((sum, d) => sum + d.amount, 0);
+
+  res.json({ deposits, totalActive });
+});
+
+// ─── POST /api/deposits/:id/withdraw ─────────────────────────────────────────
+router.post("/:id/withdraw", auth, async (req, res, next) => {
+  try {
+    const deposit = store.deposits.get(req.params.id);
+
+    if (!deposit)                             return res.status(404).json({ error: "Deposit not found" });
+    if (deposit.publicKey !== req.publicKey)  return res.status(403).json({ error: "Not your deposit" });
+    if (deposit.withdrawnAt)                  return res.status(400).json({ error: "Already withdrawn" });
+
+    // ── TODO: Smart Contract Hook ───────────────────────────────────────────
+    // When smart contracts are ready:
+    //   1. Build an unsigned withdrawal XDR and return it to the frontend
+    //   2. Frontend signs it with Freighter/xBull and submits to Stellar
+    //   3. Frontend calls back with the txHash to confirm
+    //   4. Only then mark withdrawnAt below
+
+    deposit.withdrawnAt = new Date().toISOString();
+
+    const pool = store.pools.get(deposit.poolType);
+    pool.totalDeposited = Math.max(0, pool.totalDeposited - deposit.amount);
+    pool.participants = countUniqueParticipants(deposit.poolType);
+
+    const user = store.users.get(req.publicKey);
+    if (user) {
+      user.tickets = Math.max(0, user.tickets - deposit.tickets);
+    }
+
+    res.json({ message: "Withdrawal recorded", deposit });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+function countUniqueParticipants(poolType) {
+  return new Set(
+    Array.from(store.deposits.values())
+      .filter((d) => d.poolType === poolType && !d.withdrawnAt)
+      .map((d) => d.publicKey)
+  ).size;
 }
 
-module.exports = {
-  server,
-  networkPassphrase,
-  verifyWalletSignature,
-  buildChallengeTransaction,
-  getAccountDetails,
-  getAccountTransactions,
-  submitTransaction,
-};
+module.exports = router;
