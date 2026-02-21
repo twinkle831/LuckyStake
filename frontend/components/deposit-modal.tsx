@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useMemo, useCallback } from "react"
-import { X, Loader2, ArrowRight, Ticket, TrendingUp, Shield, AlertCircle, RefreshCw } from "lucide-react"
+import { X, Loader2, ArrowRight, Ticket, TrendingUp, Shield, AlertCircle, RefreshCw, ExternalLink } from "lucide-react"
 import { useWallet } from "@/context/wallet-context"
 import { type Pool, calcTickets, calcWinProbability } from "@/lib/pool-data"
 import { addDeposit } from "@/lib/deposit-store"
 import { executeDeposit } from "@/lib/soroban-contracts"
 import { authenticateWithBackend } from "@/lib/wallet-connectors"
+import { stellarExpertTxUrl } from "@/lib/stellar-explorer"
 
 interface Props {
   pool: Pool | null
@@ -153,13 +154,14 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
         throw new Error(errorData.error || `Backend error: ${response.status}`)
       }
 
-      // 3. Update local store
+      // 3. Update local store (include real tx hash for Stellar Expert link)
       addDeposit({
         poolId: pool.id,
         poolName: pool.name,
         amount: numAmount,
         tickets,
         winProbability: winProb,
+        txHash: result.txHash,
       })
 
       setIsDepositing(false)
@@ -388,11 +390,17 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                 <span className="text-foreground">~0.0001 XLM</span>
               </div>
               {txHash && (
-                <div className="flex justify-between text-sm mt-2 pt-2 border-t border-border">
+                <div className="flex flex-col gap-1 text-sm mt-2 pt-2 border-t border-border">
                   <span className="text-muted-foreground">Transaction</span>
-                  <span className="text-foreground font-mono text-xs break-all text-right max-w-[200px]">
+                  <a
+                    href={stellarExpertTxUrl(txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent hover:underline font-mono text-xs break-all inline-flex items-center gap-1"
+                  >
                     {txHash.slice(0, 8)}...{txHash.slice(-8)}
-                  </span>
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
                 </div>
               )}
             </div>
@@ -422,6 +430,17 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                 <p className="font-display text-lg font-bold text-accent">{winProb}</p>
               </div>
             </div>
+            {txHash && (
+              <a
+                href={stellarExpertTxUrl(txHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2 text-sm text-accent hover:underline"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Verify transaction on Stellar Expert
+              </a>
+            )}
             <div className="flex gap-3 mt-6 w-full">
               <button
                 onClick={() => { handleClose(); onSuccess() }}

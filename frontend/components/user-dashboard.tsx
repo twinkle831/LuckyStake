@@ -31,6 +31,7 @@ import {
   type DepositEntry,
 } from "@/lib/deposit-store"
 import { pools, formatCountdown, type Pool } from "@/lib/pool-data"
+import { stellarExpertTxUrl, isStellarTxHash } from "@/lib/stellar-explorer"
 
 function useDeposits() {
   return useSyncExternalStore(subscribe, getDeposits, getDeposits)
@@ -364,13 +365,17 @@ function TransactionRow({ entry }: { entry: DepositEntry }) {
             <CheckCircle2 className="h-3 w-3" />
             {entry.status}
           </span>
-          <a
-            href="#"
-            className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-            aria-label="View on explorer"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          {isStellarTxHash(entry.txHash) ? (
+            <a
+              href={stellarExpertTxUrl(entry.txHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent"
+              aria-label="View on Stellar Expert"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
         </div>
       </div>
     </div>

@@ -43,13 +43,13 @@ function generateTxHash(): string {
 }
 
 export function addDeposit(
-  entry: Omit<DepositEntry, "id" | "txHash" | "status" | "timestamp" | "type">
+  entry: Omit<DepositEntry, "id" | "txHash" | "status" | "timestamp" | "type"> & { txHash?: string }
 ) {
   deposits = [
     {
       ...entry,
       id: crypto.randomUUID(),
-      txHash: generateTxHash(),
+      txHash: entry.txHash ?? generateTxHash(),
       status: "confirmed",
       timestamp: new Date(),
       type: "deposit",
