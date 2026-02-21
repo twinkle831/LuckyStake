@@ -13,11 +13,11 @@ const store = {
   // deposits[id] = { id, publicKey, poolType, amount, txHash, depositedAt, withdrawnAt }
   deposits: new Map(),
 
-  // pools[type] = { type, totalDeposited, yieldAccrued, participants, nextDraw }
+  // pools[type] = { type, totalDeposited, yieldAccrued, participants, nextDraw, suppliedToBlend }
   pools: new Map([
-    ["weekly", { type: "weekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("weekly"), prizeHistory: [] }],
-    ["biweekly", { type: "biweekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("biweekly"), prizeHistory: [] }],
-    ["monthly", { type: "monthly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("monthly"), prizeHistory: [] }],
+    ["weekly", { type: "weekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("weekly"), prizeHistory: [], suppliedToBlend: 0 }],
+    ["biweekly", { type: "biweekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("biweekly"), prizeHistory: [], suppliedToBlend: 0 }],
+    ["monthly", { type: "monthly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("monthly"), prizeHistory: [], suppliedToBlend: 0 }],
   ]),
 
   // prizes[id] = { id, winner, amount, poolType, drawnAt, txHash }

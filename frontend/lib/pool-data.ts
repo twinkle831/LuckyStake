@@ -14,6 +14,8 @@ export interface Pool {
   color: string
   borderColor: string
   featured: boolean
+  /** Amount (XLM) currently supplied to Blend lending for yield. From API. */
+  suppliedToBlend?: number
 }
 
 // Draw times are relative to now

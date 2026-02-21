@@ -5,14 +5,14 @@ const auth = require("../middleware/auth");
 
 /**
  * GET /api/pools
- * Get all pool stats (public)
+ * Get all pool stats (public). Includes suppliedToBlend (amount deployed to Blend).
  */
 router.get("/", (req, res) => {
   const pools = Array.from(store.pools.values()).map((pool) => ({
     ...pool,
-    // Simulated APY yield (replace with real Blend/AMM yield data)
     estimatedAPY: pool.type === "weekly" ? 5.8 : pool.type === "biweekly" ? 6.2 : 7.1,
     currency: "XLM",
+    suppliedToBlend: pool.suppliedToBlend ?? 0,
   }));
   res.json({ pools });
 });
@@ -34,7 +34,28 @@ router.get("/:type", (req, res) => {
     estimatedAPY: type === "weekly" ? 5.8 : type === "biweekly" ? 6.2 : 7.1,
     currency: "XLM",
     ticketRatio: "1 ticket per 1 XLM per day",
+    suppliedToBlend: pool.suppliedToBlend ?? 0,
   });
+});
+
+/**
+ * PATCH /api/pools/:type/blend-stats
+ * Update suppliedToBlend for a pool (e.g. after admin deploys to Blend on-chain).
+ * In production, protect with admin auth or derive from on-chain get_supplied_to_blend.
+ */
+router.patch("/:type/blend-stats", (req, res) => {
+  const { type } = req.params;
+  if (!["weekly", "biweekly", "monthly"].includes(type)) {
+    return res.status(400).json({ error: "Invalid pool type" });
+  }
+  const pool = store.pools.get(type);
+  if (!pool) return res.status(404).json({ error: "Pool not found" });
+
+  const { suppliedToBlend } = req.body;
+  if (typeof suppliedToBlend === "number" && suppliedToBlend >= 0) {
+    pool.suppliedToBlend = suppliedToBlend;
+  }
+  res.json({ poolType: type, suppliedToBlend: pool.suppliedToBlend ?? 0 });
 });
 
 /**

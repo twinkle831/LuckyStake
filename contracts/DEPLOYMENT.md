@@ -62,15 +62,41 @@ stellar contract invoke \
 **Monthly pool (30 days):**
 Same process with `--period_days 30`.
 
+## Blend Integration (Lending for Yield)
+
+After initialization, the admin can deploy pool funds to [Blend](https://docs.blend.capital/) to earn yield:
+
+1. **Set Blend pool** (once per pool):
+   ```bash
+   stellar contract invoke --id <POOL_CONTRACT_ID> --source ADMIN_KEY \
+     set_blend_pool --blend_pool <BLEND_LENDING_POOL_ADDRESS>
+   ```
+2. **Supply to Blend** (admin, any time):
+   ```bash
+   stellar contract invoke --id <POOL_CONTRACT_ID> --source ADMIN_KEY \
+     supply_to_blend --amount <AMOUNT_SCALED_7_DECIMALS>
+   ```
+3. **Withdraw from Blend** (admin, when needed for user withdrawals):
+   ```bash
+   stellar contract invoke --id <POOL_CONTRACT_ID> --source ADMIN_KEY \
+     withdraw_from_blend --amount <AMOUNT_SCALED_7_DECIMALS>
+   ```
+
+Use testnet Blend pool address from [blend-utils/testnet.contracts.json](https://github.com/blend-capital/blend-utils/blob/main/testnet.contracts.json) (e.g. `TestnetV2` or the pool ID for your asset).
+
 ## Key Functions
 
-| Function        | Auth   | Description                                      |
-|-----------------|--------|--------------------------------------------------|
-| `initialize`    | Admin  | Set admin, token, period (7, 15, or 30)         |
-| `deposit`       | User   | Deposit tokens; tickets = amount × period_days  |
-| `withdraw`      | User   | Withdraw principal; burns proportional tickets |
-| `add_prize`     | Admin  | Add yield to prize fund                         |
-| `execute_draw`   | Admin  | Select winner, transfer prize                   |
+| Function            | Auth   | Description                                      |
+|---------------------|--------|--------------------------------------------------|
+| `initialize`        | Admin  | Set admin, token, period (7, 15, or 30)         |
+| `deposit`           | User   | Deposit tokens; tickets = amount × period_days  |
+| `withdraw`          | User   | Withdraw principal; burns proportional tickets |
+| `add_prize`         | Admin  | Add yield to prize fund                         |
+| `execute_draw`      | Admin  | Select winner, transfer prize                   |
+| `set_blend_pool`    | Admin  | Set Blend lending pool address                  |
+| `supply_to_blend`   | Admin  | Supply token to Blend (earn yield)              |
+| `withdraw_from_blend` | Admin | Withdraw token from Blend back to pool         |
+| `get_supplied_to_blend` | —   | Read amount currently supplied to Blend        |
 
 ## Ticket Formula
 

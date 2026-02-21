@@ -4,11 +4,13 @@
 //!
 //! A parameterized pool contract for weekly (7d), biweekly (15d), and monthly (30d) draws.
 //! Deploy once per pool type with the appropriate `period_days` at initialization.
-//!
 //! Ticket formula: 1 ticket per $1 per day → tickets = amount * period_days
+//!
+//! Blend integration: pool can supply token to a Blend lending pool to earn yield.
+//! Admin sets Blend pool address, then can call supply_to_blend / withdraw_from_blend.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, log, token, Address, Env, Vec,
+    contract, contractimpl, contracttype, log, token, Address, Env, Symbol, Vec,
 };
 
 #[contracttype]
@@ -22,7 +24,19 @@ pub enum DataKey {
     TotalTickets,
     PrizeFund,
     Depositors,
-    DrawNonce,       // Increments each draw for entropy
+    DrawNonce,
+    /// Blend lending pool contract address (optional)
+    BlendPool,
+    /// Total amount currently supplied to Blend (for display/indexing)
+    SuppliedToBlend,
+}
+
+/// Request type for Blend pool submit(). See Blend docs: Deposit=0, Withdraw=1, SupplyCollateral=2, WithdrawCollateral=3.
+#[contracttype]
+pub struct BlendRequest {
+    pub request_type: u32,
+    pub address: Address,
+    pub amount: i128,
 }
 
 #[contract]
@@ -371,6 +385,135 @@ impl LuckyStakePool {
 
     pub fn get_token(env: Env) -> Address {
         env.storage().instance().get(&DataKey::Token).unwrap()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Blend integration: supply pool funds to Blend lending for yield
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Set the Blend lending pool contract address (admin only). Call once per pool.
+    pub fn set_blend_pool(env: Env, blend_pool: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::BlendPool, &blend_pool);
+        if !env.storage().instance().has(&DataKey::SuppliedToBlend) {
+            env.storage().instance().set(&DataKey::SuppliedToBlend, &0i128);
+        }
+        log!(&env, "Blend pool set: {}", blend_pool);
+    }
+
+    /// Supply token from pool to Blend lending pool (admin only).
+    /// Approves Blend to pull token, then submits a SupplyCollateral request.
+    /// Request type 2 = SupplyCollateral per Blend docs.
+    pub fn supply_to_blend(env: Env, amount: i128) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        assert!(amount > 0, "amount must be positive");
+
+        let blend_pool: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::BlendPool)
+            .unwrap_or_else(|| panic!("Blend pool not set"));
+        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+
+        let token_client = token::Client::new(&env, &token_id);
+        let self_addr = env.current_contract_address();
+
+        // Approve Blend pool to pull tokens from this contract
+        let expiration = env.ledger().sequence() + 1000;
+        token_client.approve(&self_addr, &blend_pool, &amount, &expiration);
+
+        // Submit SupplyCollateral (2): from=self, to=self, spender=self, request=(2, token, amount)
+        let request = BlendRequest {
+            request_type: 2u32,
+            address: token_id.clone(),
+            amount,
+        };
+        let requests: Vec<BlendRequest> = Vec::new(&env);
+        let mut requests = requests;
+        requests.push_back(request);
+
+        env.invoke_contract::<()>(
+            &blend_pool,
+            &Symbol::new(&env, "submit"),
+            (
+                self_addr.clone(),
+                self_addr.clone(),
+                self_addr,
+                requests,
+            ),
+        );
+
+        let supplied: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SuppliedToBlend)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::SuppliedToBlend, &(supplied + amount));
+
+        log!(&env, "Supplied to Blend: {} | total supplied: {}", amount, supplied + amount);
+    }
+
+    /// Withdraw token from Blend back to the pool (admin only).
+    /// Request type 3 = WithdrawCollateral per Blend docs.
+    pub fn withdraw_from_blend(env: Env, amount: i128) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        assert!(amount > 0, "amount must be positive");
+
+        let blend_pool: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::BlendPool)
+            .unwrap_or_else(|| panic!("Blend pool not set"));
+        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let self_addr = env.current_contract_address();
+
+        let request = BlendRequest {
+            request_type: 3u32,
+            address: token_id,
+            amount,
+        };
+        let requests: Vec<BlendRequest> = Vec::new(&env);
+        let mut requests = requests;
+        requests.push_back(request);
+
+        env.invoke_contract::<()>(
+            &blend_pool,
+            &Symbol::new(&env, "submit"),
+            (
+                self_addr.clone(),
+                self_addr.clone(),
+                self_addr,
+                requests,
+            ),
+        );
+
+        let supplied: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SuppliedToBlend)
+            .unwrap_or(0);
+        let new_supplied = supplied - amount;
+        env.storage()
+            .instance()
+            .set(&DataKey::SuppliedToBlend, &new_supplied);
+
+        log!(&env, "Withdrew from Blend: {} | remaining supplied: {}", amount, new_supplied);
+    }
+
+    pub fn get_blend_pool(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::BlendPool).ok()
+    }
+
+    pub fn get_supplied_to_blend(env: Env) -> i128 {
+        env.storage()
+            .instance()
+            .get(&DataKey::SuppliedToBlend)
+            .unwrap_or(0)
     }
 }
 

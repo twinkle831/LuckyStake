@@ -32,6 +32,8 @@ function useDeposits() {
   return useSyncExternalStore(subscribe, getDeposits, getDeposits)
 }
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+
 export function PoolDetailPanel({
   pool,
   open,
@@ -40,6 +42,7 @@ export function PoolDetailPanel({
   onWithdraw,
 }: Props) {
   const [countdown, setCountdown] = useState("")
+  const [suppliedToBlend, setSuppliedToBlend] = useState<number | null>(null)
   const allDeposits = useDeposits()
 
   useEffect(() => {
@@ -51,6 +54,14 @@ export function PoolDetailPanel({
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
   }, [pool])
+
+  useEffect(() => {
+    if (!open || !pool) return
+    fetch(`${API}/api/pools/${pool.id}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => data != null && typeof data.suppliedToBlend === "number" && setSuppliedToBlend(data.suppliedToBlend))
+      .catch(() => {})
+  }, [open, pool?.id])
 
   if (!open || !pool) return null
 
@@ -197,7 +208,15 @@ export function PoolDetailPanel({
             <div className="rounded-xl border border-border divide-y divide-border/50">
               <InfoRow label="Minimum Deposit" value={`${pool.minDeposit} XLM`} />
               <InfoRow label="Draw Frequency" value={pool.frequency} />
-              <InfoRow label="Yield Source" value="Stellar DeFi (Blend + Soroswap)" />
+              <InfoRow
+                label="Deployed to Blend"
+                value={
+                  suppliedToBlend != null && suppliedToBlend > 0
+                    ? `${suppliedToBlend.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM`
+                    : "—"
+                }
+              />
+              <InfoRow label="Yield Source" value="Blend lending (bTokens)" />
               <InfoRow label="Smart Contract" value="Soroban Verified" />
               <InfoRow label="Withdrawal" value="Instant (no lock-up)" />
             </div>
