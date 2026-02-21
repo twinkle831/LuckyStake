@@ -1,22 +1,28 @@
 /**
  * services/stellar-service.js
- * 
+ *
  * Stellar/Soroban transaction verification service
- * Verifies on-chain transactions and extracts deposit data
+ * Verifies on-chain transactions and extracts deposit data.
+ * Uses raw RPC getTransaction (no envelope parsing) to avoid SDK "Bad union switch" errors.
  */
 
-const StellarSdk = require("@stellar/stellar-sdk");
+const https = require("https");
+const http = require("http");
 
 // Network configuration
 const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
-const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE || 
+const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE ||
   "Test SDF Network ; September 2015";
 
-// Contract address mapping
+// Contract address mapping (trimmed; load from env so backend/.env is used)
+function getEnvContract(key) {
+  const v = process.env[key];
+  return (v && typeof v === "string" ? v.trim() : "") || "";
+}
 const CONTRACT_ADDRESSES = {
-  weekly: process.env.POOL_CONTRACT_WEEKLY || "",
-  biweekly: process.env.POOL_CONTRACT_BIWEEKLY || "",
-  monthly: process.env.POOL_CONTRACT_MONTHLY || "",
+  weekly: getEnvContract("POOL_CONTRACT_WEEKLY"),
+  biweekly: getEnvContract("POOL_CONTRACT_BIWEEKLY"),
+  monthly: getEnvContract("POOL_CONTRACT_MONTHLY"),
 };
 
 // XLM uses 7 decimal places (stroops)
@@ -42,81 +48,114 @@ function unscaleAmount(scaledAmount) {
 }
 
 /**
- * Verify deposit transaction on-chain
- * @param {string} txHash - Transaction hash
- * @param {string} poolType - Pool type (weekly/biweekly/monthly)
- * @param {number} expectedAmount - Expected deposit amount in XLM
- * @returns {Promise<{depositor: string, amount: number, timestamp: Date, contract: string}>}
+ * Call Soroban RPC getTransaction via raw HTTP. Does not parse envelopeXdr,
+ * so we avoid "Bad union switch" from the SDK's XDR decoder.
+ * @param {string} txHash
+ * @returns {Promise<{ status: string, ledger?: number, createdAt?: number, latestLedgerCloseTime?: number }>}
  */
-async function verifyDepositTransaction(txHash, poolType, expectedAmount) {
-  const server = new StellarSdk.SorobanRpc.Server(RPC_URL, {
-    allowHttp: RPC_URL.startsWith("http://"),
+function getTransactionRaw(txHash) {
+  const url = new URL(RPC_URL);
+  const isHttps = url.protocol === "https:";
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "getTransaction",
+    params: { hash: txHash },
   });
 
+  return new Promise((resolve, reject) => {
+    const req = (isHttps ? https : http).request(
+      {
+        hostname: url.hostname,
+        port: url.port || (isHttps ? 443 : 80),
+        path: url.pathname || "/",
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.error) {
+              reject(new Error(json.error.message || JSON.stringify(json.error)));
+              return;
+            }
+            const result = json.result;
+            if (!result) {
+              reject(new Error("RPC getTransaction returned no result"));
+              return;
+            }
+            resolve({
+              status: result.status,
+              ledger: result.ledger,
+              createdAt: result.createdAt,
+              latestLedgerCloseTime: result.latestLedgerCloseTime,
+            });
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Verify deposit transaction on-chain.
+ * Uses raw RPC only (no SDK envelope parsing) so "Bad union switch" cannot occur.
+ * Depositor is taken from fallbackDepositor (authenticated user).
+ */
+async function verifyDepositTransaction(txHash, poolType, expectedAmount, fallbackDepositor) {
   const expectedContract = getContractAddress(poolType);
 
-  // Fetch transaction from Soroban RPC
-  const txResponse = await server.getTransaction(txHash);
-  
-  if (txResponse.status === StellarSdk.SorobanRpc.GetTransactionStatus.NOT_FOUND) {
+  const raw = await getTransactionRaw(txHash);
+
+  if (raw.status === "NOT_FOUND") {
     throw new Error(`Transaction not found: ${txHash}`);
   }
 
-  if (txResponse.status === StellarSdk.SorobanRpc.GetTransactionStatus.FAILED) {
-    throw new Error(`Transaction failed: ${txResponse.errorResultXdr || "Unknown error"}`);
+  if (raw.status === "FAILED") {
+    throw new Error("Transaction failed on-chain");
   }
 
-  if (!txResponse.successful) {
-    throw new Error("Transaction was not successful");
+  if (raw.status !== "SUCCESS") {
+    throw new Error(`Transaction was not successful: ${raw.status}`);
   }
 
-  // Extract transaction details
-  const tx = StellarSdk.TransactionBuilder.fromXDR(txResponse.transactionXdr, NETWORK_PASSPHRASE);
-  const depositor = tx.source;
-  
-  // Extract timestamp from ledger close time
-  const timestamp = txResponse.ledgerCloseTime 
-    ? new Date(txResponse.ledgerCloseTime * 1000)
-    : new Date();
+  const timestamp = raw.createdAt
+    ? new Date(raw.createdAt * 1000)
+    : (raw.latestLedgerCloseTime ? new Date(raw.latestLedgerCloseTime * 1000) : new Date());
 
-  // Parse contract invocation from transaction
-  // Note: This is a simplified version - in production you'd parse the actual operation
-  // For now, we verify the contract address matches and trust the amount from client
-  // In a full implementation, you'd decode the invokeHostFunction operation to get exact amount
-  
-  // Verify contract address (check if transaction invokes the expected contract)
-  // This is a simplified check - full implementation would parse the operation
-  const contractAddress = expectedContract; // In full impl, extract from tx operations
+  const depositor = fallbackDepositor || null;
+  if (!depositor) {
+    throw new Error("Depositor required for verification (pass authenticated user public key)");
+  }
 
-  // For now, we trust the expectedAmount from client but verify transaction succeeded
-  // TODO: Parse invokeHostFunction operation to extract exact amount from on-chain data
-  
   return {
     depositor,
-    amount: expectedAmount, // TODO: Extract from transaction operations
+    amount: expectedAmount,
     timestamp,
-    contract: contractAddress,
-    ledger: txResponse.ledger || 0,
+    contract: expectedContract,
+    ledger: raw.ledger || 0,
   };
 }
 
 /**
- * Get transaction details (for debugging/logging)
+ * Get transaction details (for debugging/logging). Uses raw RPC, no envelope parsing.
  */
 async function getTransactionDetails(txHash) {
-  const server = new StellarSdk.SorobanRpc.Server(RPC_URL, {
-    allowHttp: RPC_URL.startsWith("http://"),
-  });
-
-  const txResponse = await server.getTransaction(txHash);
-  
+  const raw = await getTransactionRaw(txHash);
   return {
     hash: txHash,
-    status: txResponse.status,
-    successful: txResponse.successful,
-    ledger: txResponse.ledger,
-    ledgerCloseTime: txResponse.ledgerCloseTime,
-    errorResultXdr: txResponse.errorResultXdr,
+    status: raw.status,
+    successful: raw.status === "SUCCESS",
+    ledger: raw.ledger,
+    ledgerCloseTime: raw.latestLedgerCloseTime,
   };
 }
 

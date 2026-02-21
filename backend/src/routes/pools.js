@@ -11,7 +11,7 @@ router.get("/", (req, res) => {
   const pools = Array.from(store.pools.values()).map((pool) => ({
     ...pool,
     // Simulated APY yield (replace with real Blend/AMM yield data)
-    estimatedAPY: pool.type === "daily" ? 4.2 : pool.type === "weekly" ? 5.8 : 7.1,
+    estimatedAPY: pool.type === "weekly" ? 5.8 : pool.type === "biweekly" ? 6.2 : 7.1,
     currency: "XLM",
   }));
   res.json({ pools });
@@ -23,7 +23,7 @@ router.get("/", (req, res) => {
  */
 router.get("/:type", (req, res) => {
   const { type } = req.params;
-  if (!["daily", "weekly", "monthly"].includes(type)) {
+  if (!["weekly", "biweekly", "monthly"].includes(type)) {
     return res.status(400).json({ error: "Invalid pool type" });
   }
   const pool = store.pools.get(type);
@@ -31,7 +31,7 @@ router.get("/:type", (req, res) => {
 
   res.json({
     ...pool,
-    estimatedAPY: type === "daily" ? 4.2 : type === "weekly" ? 5.8 : 7.1,
+    estimatedAPY: type === "weekly" ? 5.8 : type === "biweekly" ? 6.2 : 7.1,
     currency: "XLM",
     ticketRatio: "1 ticket per 1 XLM per day",
   });

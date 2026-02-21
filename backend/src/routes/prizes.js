@@ -42,7 +42,7 @@ router.post("/draw", async (req, res, next) => {
     }
 
     const { poolType } = req.body;
-    if (!["daily", "weekly", "monthly"].includes(poolType)) {
+    if (!["weekly", "biweekly", "monthly"].includes(poolType)) {
       return res.status(400).json({ error: "Invalid poolType" });
     }
 

@@ -1,20 +1,5 @@
 "use client"
 
-/**
- * context/wallet-context.tsx
- *
- * Drop-in replacement. Preserves EVERY existing field:
- *   address, isConnected, isConnecting, balance, network
- *   connect(), disconnect(), truncateAddress()
- *
- * What's new:
- *   walletType        — "freighter" | "xbull" | null
- *   setConnection()   — called by ConnectWalletModal after real wallet connects
- *
- * The old connect() no longer simulates — it just logs a warning.
- * Wire your "Connect Wallet" button to open the modal instead.
- */
-
 import {
   createContext,
   useContext,
@@ -30,26 +15,21 @@ import {
   authenticateWithBackend,
 } from "@/lib/wallet-connectors"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export interface WalletState {
   address: string | null
   isConnected: boolean
   isConnecting: boolean
-  balance: string          // human-readable XLM balance e.g. "1,234.56"
-  network: string          // human-readable label e.g. "Stellar Testnet"
+  balance: string
+  network: string
   walletType: WalletType | null
 }
 
 interface WalletContextType extends WalletState {
   connect: () => Promise<void>
   disconnect: () => void
-  /** Called by ConnectWalletModal after wallet popup approves */
   setConnection: (conn: WalletConnection) => Promise<void>
   token: string | null
 }
-
-// ─── Context ──────────────────────────────────────────────────────────────────
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
 
@@ -64,19 +44,20 @@ const DEFAULT: WalletState = {
 
 const SS_KEY = "luckystake_wallet"
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [wallet, setWallet] = useState<WalletState>(DEFAULT)
   const [token, setToken] = useState<string | null>(null)
 
-  // Restore session on mount
+  // Restore session on mount — and automatically re-authenticate if token is missing
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(SS_KEY)
-      if (!raw) return
-      const saved = JSON.parse(raw)
-      if (saved?.address) {
+    async function restoreSession() {
+      try {
+        const raw = sessionStorage.getItem(SS_KEY)
+        if (!raw) return
+        const saved = JSON.parse(raw)
+        if (!saved?.address) return
+
+        // Restore wallet state immediately so UI shows connected
         setWallet({
           ...DEFAULT,
           address: saved.address,
@@ -85,21 +66,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           network: saved.network ?? "Stellar Testnet",
           walletType: saved.walletType ?? null,
         })
-        setToken(saved.token ?? null)
+
+        // If we have a token, use it — otherwise silently re-authenticate
+        if (saved.token) {
+          setToken(saved.token)
+        } else {
+          // Token was missing (backend was down when wallet first connected)
+          // Re-run auth flow silently on page load
+          const newToken = await authenticateWithBackend(saved.address)
+          if (newToken) {
+            setToken(newToken)
+            // Persist the new token so subsequent refreshes don't need to re-auth
+            saved.token = newToken
+            sessionStorage.setItem(SS_KEY, JSON.stringify(saved))
+          }
+        }
+      } catch {
+        /* ignore — user just won't be authenticated */
       }
-    } catch { /* ignore */ }
+    }
+
+    restoreSession()
   }, [])
 
-  /**
-   * Called by ConnectWalletModal right after wallet extension popup approves.
-   * 1. Fetches real XLM balance from Stellar Horizon via backend
-   * 2. Authenticates with backend → gets JWT
-   * 3. Updates context + persists session
-   */
   const setConnection = useCallback(async (conn: WalletConnection) => {
     setWallet((prev) => ({ ...prev, isConnecting: true }))
 
-    // Fetch real XLM balance from backend (calls Stellar Horizon)
     let xlmBalance = "0"
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
@@ -107,12 +99,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json()
         xlmBalance = data.xlmBalance != null
-          ? Number(data.xlmBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 7 })
+          ? Number(data.xlmBalance).toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 7,
+            })
           : "0"
       }
-    } catch { /* backend not running, fine */ }
+    } catch { /* backend not running */ }
 
-    // Authenticate with backend → JWT
     const jwt = await authenticateWithBackend(conn.address)
     setToken(jwt)
 
@@ -131,20 +125,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     setWallet(newState)
 
-    // Persist so page refresh restores the session
     try {
       sessionStorage.setItem(SS_KEY, JSON.stringify({ ...newState, token: jwt }))
     } catch { /* ignore */ }
   }, [])
 
-  /**
-   * Legacy connect() — kept for backward compatibility.
-   * If you call this directly, open the ConnectWalletModal instead.
-   */
   const connect = useCallback(async () => {
-    console.warn(
-      "[WalletContext] connect() called directly — open <ConnectWalletModal> instead"
-    )
+    console.warn("[WalletContext] connect() called directly — open <ConnectWalletModal> instead")
   }, [])
 
   const disconnect = useCallback(() => {
@@ -159,8 +146,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     </WalletContext.Provider>
   )
 }
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useWallet() {
   const ctx = useContext(WalletContext)

@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { X, Loader2, ArrowRight, Ticket, TrendingUp, Shield, AlertCircle } from "lucide-react"
+import { useState, useMemo, useCallback } from "react"
+import { X, Loader2, ArrowRight, Ticket, TrendingUp, Shield, AlertCircle, RefreshCw } from "lucide-react"
 import { useWallet } from "@/context/wallet-context"
 import { type Pool, calcTickets, calcWinProbability } from "@/lib/pool-data"
 import { addDeposit } from "@/lib/deposit-store"
 import { executeDeposit } from "@/lib/soroban-contracts"
+import { authenticateWithBackend } from "@/lib/wallet-connectors"
 
 interface Props {
   pool: Pool | null
@@ -15,10 +16,11 @@ interface Props {
 }
 
 export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
-  const { isConnected, balance, address, walletType, token } = useWallet()
+  const { isConnected, balance, address, walletType, token, setConnection } = useWallet()
   const [amount, setAmount] = useState("")
   const [privacyMode, setPrivacyMode] = useState(false)
   const [isDepositing, setIsDepositing] = useState(false)
+  const [isReauthing, setIsReauthing] = useState(false)
   const [step, setStep] = useState<"input" | "confirm" | "success">("input")
   const [error, setError] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string>("")
@@ -43,27 +45,81 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
     setStep("input")
     setIsDepositing(false)
     setPrivacyMode(false)
+    setError(null)
     onClose()
   }
+
+  /**
+   * Re-authenticate with the backend without requiring the user to
+   * re-open the wallet extension. We already have their address from
+   * the existing wallet connection — just run the challenge/verify flow again.
+   */
+  const handleReauth = useCallback(async () => {
+    if (!address) return
+    setIsReauthing(true)
+    setError(null)
+    try {
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+
+      // Step 1: challenge
+      const challengeRes = await fetch(`${API}/api/auth/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKey: address }),
+      })
+      if (!challengeRes.ok) throw new Error(`Challenge failed: ${challengeRes.status}`)
+      const { nonce } = await challengeRes.json()
+
+      // Step 2: verify → get new JWT
+      const verifyRes = await fetch(`${API}/api/auth/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKey: address, nonce }),
+      })
+      if (!verifyRes.ok) throw new Error(`Verify failed: ${verifyRes.status}`)
+      const { token: newToken } = await verifyRes.json()
+
+      // Persist new token in wallet context via sessionStorage patch
+      // (wallet-context restores from sessionStorage on mount)
+      try {
+        const raw = sessionStorage.getItem("luckystake_wallet")
+        if (raw) {
+          const saved = JSON.parse(raw)
+          saved.token = newToken
+          sessionStorage.setItem("luckystake_wallet", JSON.stringify(saved))
+        }
+      } catch { /* ignore */ }
+
+      // Force a page reload to re-hydrate context with the new token
+      // This is the safest way without needing a setToken() export
+      window.location.reload()
+    } catch (err: any) {
+      setError(`Re-authentication failed: ${err?.message}. Please disconnect and reconnect your wallet.`)
+    } finally {
+      setIsReauthing(false)
+    }
+  }, [address])
 
   async function handleDeposit() {
     if (!pool || !isValid || !address || !walletType) {
       setError("Please connect your wallet first")
       return
     }
-    
+
+    // Token is null — backend was unreachable when wallet connected.
+    // Show a helpful inline re-auth button instead of blocking completely.
+    if (!token) {
+      setError("SESSION_EXPIRED")
+      return
+    }
+
     setError(null)
     setStep("confirm")
     setIsDepositing(true)
 
     try {
-      // Execute deposit: build, sign, submit, wait for confirmation
-      const result = await executeDeposit(
-        pool.id,
-        numAmount,
-        address,
-        walletType
-      )
+      // 1. Execute on-chain deposit: build → sign → submit → confirm
+      const result = await executeDeposit(pool.id, numAmount, address, walletType)
 
       if (!result.success) {
         throw new Error(result.error || "Deposit failed")
@@ -71,7 +127,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
 
       setTxHash(result.txHash)
 
-      // Call backend to index the deposit
+      // 2. Record deposit in backend
       const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
       const response = await fetch(`${API}/api/deposits`, {
         method: "POST",
@@ -88,12 +144,16 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
+        if (response.status === 401) {
+          setError("SESSION_EXPIRED")
+          setIsDepositing(false)
+          setStep("input")
+          return
+        }
         throw new Error(errorData.error || `Backend error: ${response.status}`)
       }
 
-      const { deposit } = await response.json()
-
-      // Update local store
+      // 3. Update local store
       addDeposit({
         poolId: pool.id,
         poolName: pool.name,
@@ -256,7 +316,34 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                 Insufficient balance
               </div>
             )}
-            {error && (
+
+            {/* Session expired — inline re-auth banner */}
+            {error === "SESSION_EXPIRED" && (
+              <div className="mt-3 rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-xs text-destructive font-medium">Session expired</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Your login session expired. Click below to reconnect — no wallet popup needed.
+                    </p>
+                    <button
+                      onClick={handleReauth}
+                      disabled={isReauthing}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-60"
+                    >
+                      {isReauthing
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Reconnecting…</>
+                        : <><RefreshCw className="h-3 w-3" /> Refresh Session</>
+                      }
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Generic errors */}
+            {error && error !== "SESSION_EXPIRED" && (
               <div className="mt-3 flex items-center gap-2 text-xs text-destructive rounded-lg bg-destructive/10 p-3">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
@@ -266,7 +353,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
             {/* Deposit button */}
             <button
               onClick={handleDeposit}
-              disabled={!isValid || numAmount <= 0}
+              disabled={!isValid || numAmount <= 0 || isReauthing}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Deposit {numAmount > 0 ? `${numAmount.toLocaleString()} XLM` : ""}
@@ -285,7 +372,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
             <p className="mt-2 text-sm text-muted-foreground text-center max-w-xs">
               {txHash
                 ? "Waiting for transaction confirmation on Stellar network..."
-                : "Please approve the Soroban deposit() call in your wallet. This includes contract call fees."}
+                : "Please approve the Soroban deposit() call in your wallet."}
             </p>
             <div className="mt-6 rounded-xl bg-secondary/30 p-4 w-full">
               <div className="flex justify-between text-sm">
@@ -316,43 +403,28 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
         {step === "success" && (
           <div className="flex flex-col items-center justify-center py-8">
             <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10">
-              <svg
-                className="h-8 w-8 text-accent"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
+              <svg className="h-8 w-8 text-accent" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h3 className="font-display text-xl font-bold text-foreground">
-              Deposit Confirmed
-            </h3>
+            <h3 className="font-display text-xl font-bold text-foreground">Deposit Confirmed</h3>
             <p className="mt-2 text-sm text-muted-foreground text-center">
               Your {numAmount.toLocaleString()} XLM has been deposited into the{" "}
               {pool.name}. You received {tickets.toLocaleString()} tickets.
             </p>
-
             <div className="mt-6 grid grid-cols-2 gap-3 w-full">
               <div className="rounded-xl bg-secondary/50 p-4 text-center">
                 <p className="text-xs text-muted-foreground">Tickets</p>
-                <p className="font-display text-lg font-bold text-foreground">
-                  {tickets.toLocaleString()}
-                </p>
+                <p className="font-display text-lg font-bold text-foreground">{tickets.toLocaleString()}</p>
               </div>
               <div className="rounded-xl bg-secondary/50 p-4 text-center">
                 <p className="text-xs text-muted-foreground">Win Chance</p>
                 <p className="font-display text-lg font-bold text-accent">{winProb}</p>
               </div>
             </div>
-
             <div className="flex gap-3 mt-6 w-full">
               <button
-                onClick={() => {
-                  handleClose()
-                  onSuccess()
-                }}
+                onClick={() => { handleClose(); onSuccess() }}
                 className="flex-1 rounded-xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90"
               >
                 View Dashboard

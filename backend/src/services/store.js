@@ -15,8 +15,8 @@ const store = {
 
   // pools[type] = { type, totalDeposited, yieldAccrued, participants, nextDraw }
   pools: new Map([
-    ["daily", { type: "daily", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("daily"), prizeHistory: [] }],
     ["weekly", { type: "weekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("weekly"), prizeHistory: [] }],
+    ["biweekly", { type: "biweekly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("biweekly"), prizeHistory: [] }],
     ["monthly", { type: "monthly", totalDeposited: 0, yieldAccrued: 0, participants: 0, nextDraw: nextDrawTime("monthly"), prizeHistory: [] }],
   ]),
 
@@ -27,19 +27,23 @@ const store = {
 function nextDrawTime(type) {
   const now = new Date();
   switch (type) {
-    case "daily":
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0);
-      return tomorrow.toISOString();
-    case "weekly":
+    case "weekly": {
       const nextMonday = new Date(now);
-      nextMonday.setDate(nextMonday.getDate() + (7 - nextMonday.getDay() + 1) % 7 || 7);
+      nextMonday.setDate(nextMonday.getDate() + ((7 - nextMonday.getDay() + 1) % 7 || 7));
       nextMonday.setHours(0, 0, 0, 0);
       return nextMonday.toISOString();
-    case "monthly":
+    }
+    case "biweekly": {
+      const refMonday = new Date("2020-01-06T00:00:00Z");
+      const msPer14Days = 14 * 24 * 60 * 60 * 1000;
+      const periods = Math.ceil((now.getTime() - refMonday.getTime()) / msPer14Days);
+      const nextDraw = new Date(refMonday.getTime() + periods * msPer14Days);
+      return nextDraw.toISOString();
+    }
+    case "monthly": {
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
       return nextMonth.toISOString();
+    }
     default:
       return now.toISOString();
   }

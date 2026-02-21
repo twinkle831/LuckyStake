@@ -81,7 +81,7 @@ router.post("/verify", (req, res) => {
 
   const token = jwt.sign(
     { sub: publicKey, publicKey },
-    process.env.JWT_SECRET || "dev_secret_CHANGE_IN_PRODUCTION",
+    process.env.JWT_SECRET || "dev_secret_change_me",
     { expiresIn: "7d" }
   );
 

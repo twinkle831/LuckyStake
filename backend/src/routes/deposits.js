@@ -17,20 +17,22 @@ const store = require("../services/store");
 const { verifyDepositTransaction } = require("../services/stellar-service");
 
 // ─── POST /api/deposits ───────────────────────────────────────────────────────
-// Body: { poolType: "daily"|"weekly"|"monthly", amount: number, txHash: string }
+// Body: { poolType: "weekly"|"biweekly"|"monthly", amount: number, txHash: string }
 //
 // txHash is the Stellar transaction hash the user submitted before calling this.
 // When you add smart contracts, you'll verify txHash on-chain here.
 router.post("/", auth, async (req, res, next) => {
   try {
-    const { poolType, amount, txHash } = req.body;
+    const { poolType: rawPoolType, amount: rawAmount, txHash } = req.body;
+    const amount = typeof rawAmount === "string" ? parseFloat(rawAmount, 10) : Number(rawAmount);
+    const poolType = rawPoolType ? String(rawPoolType).toLowerCase() : "";
 
     // ── Validation ─────────────────────────────────────────────────────────
-    if (!poolType || amount == null || !txHash) {
+    if (!poolType || (amount == null || Number.isNaN(amount)) || !txHash) {
       return res.status(400).json({ error: "poolType, amount, and txHash are required" });
     }
-    if (!["daily", "weekly", "monthly"].includes(poolType)) {
-      return res.status(400).json({ error: "poolType must be 'daily', 'weekly', or 'monthly'" });
+    if (!["weekly", "biweekly", "monthly"].includes(poolType)) {
+      return res.status(400).json({ error: "poolType must be 'weekly', 'biweekly', or 'monthly'" });
     }
     if (typeof amount !== "number" || amount < 0.0000001) {
       return res.status(400).json({ error: "amount must be a number ≥ 0.0000001 (XLM)" });
@@ -39,7 +41,7 @@ router.post("/", auth, async (req, res, next) => {
     // ── Verify transaction on-chain ─────────────────────────────────────────
     let verified;
     try {
-      verified = await verifyDepositTransaction(txHash, poolType, amount);
+      verified = await verifyDepositTransaction(txHash, poolType, amount, req.publicKey);
     } catch (verifyError) {
       return res.status(400).json({ 
         error: `Transaction verification failed: ${verifyError.message}` 
@@ -53,14 +55,13 @@ router.post("/", auth, async (req, res, next) => {
       });
     }
 
-    // Calculate tickets based on pool type (1 ticket per $1 per day)
+    // Calculate tickets based on pool type (tickets scale with lock period)
     const ticketMultipliers = {
       weekly: 7,
       biweekly: 15,
       monthly: 30,
-      daily: 1, // fallback
     };
-    const tickets = Math.floor(amount * (ticketMultipliers[poolType] || 1));
+    const tickets = Math.floor(amount * (ticketMultipliers[poolType] || 7));
 
     // ── Record deposit ──────────────────────────────────────────────────────
     const id = uuidv4();
