@@ -9,7 +9,7 @@ const steps = [
     step: "01",
     title: "Deposit",
     description:
-      "Connect your Stellar wallet and deposit USDC or supported assets into any prize pool. Your funds are secured by Soroban smart contracts.",
+      "Connect your Stellar wallet and deposit XLM into any prize pool. Your funds are secured by Soroban smart contracts.",
   },
   {
     icon: Ticket,

@@ -174,7 +174,7 @@ export function PoolDetailPanel({
                   >
                     <div>
                       <p className="font-semibold text-foreground">
-                        ${d.amount.toLocaleString()} USDC
+                        {d.amount.toLocaleString()} XLM
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {d.tickets.toLocaleString()} tickets
@@ -195,7 +195,7 @@ export function PoolDetailPanel({
               Pool Details
             </h3>
             <div className="rounded-xl border border-border divide-y divide-border/50">
-              <InfoRow label="Minimum Deposit" value={`$${pool.minDeposit} USDC`} />
+              <InfoRow label="Minimum Deposit" value={`${pool.minDeposit} XLM`} />
               <InfoRow label="Draw Frequency" value={pool.frequency} />
               <InfoRow label="Yield Source" value="Stellar DeFi (Blend + Soroswap)" />
               <InfoRow label="Smart Contract" value="Soroban Verified" />

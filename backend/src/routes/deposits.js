@@ -14,6 +14,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const auth = require("../middleware/auth");
 const store = require("../services/store");
+const { verifyDepositTransaction } = require("../services/stellar-service");
 
 // ─── POST /api/deposits ───────────────────────────────────────────────────────
 // Body: { poolType: "daily"|"weekly"|"monthly", amount: number, txHash: string }
@@ -31,33 +32,48 @@ router.post("/", auth, async (req, res, next) => {
     if (!["daily", "weekly", "monthly"].includes(poolType)) {
       return res.status(400).json({ error: "poolType must be 'daily', 'weekly', or 'monthly'" });
     }
-    if (typeof amount !== "number" || amount < 1) {
-      return res.status(400).json({ error: "amount must be a number ≥ 1 (USDC)" });
+    if (typeof amount !== "number" || amount < 0.0000001) {
+      return res.status(400).json({ error: "amount must be a number ≥ 0.0000001 (XLM)" });
     }
 
-    // ── TODO: Smart Contract Hook ───────────────────────────────────────────
-    // When you're ready to integrate Stellar smart contracts, replace this
-    // comment block with:
-    //
-    //   const { server } = require("../services/stellar");
-    //   const tx = await server.transactions().transaction(txHash).call();
-    //   // verify tx.successful === true
-    //   // verify the destination matches your pool contract address
-    //   // verify the amount matches
-    //
-    // Until then, we trust the txHash the client sends (fine for dev).
+    // ── Verify transaction on-chain ─────────────────────────────────────────
+    let verified;
+    try {
+      verified = await verifyDepositTransaction(txHash, poolType, amount);
+    } catch (verifyError) {
+      return res.status(400).json({ 
+        error: `Transaction verification failed: ${verifyError.message}` 
+      });
+    }
+
+    // Verify depositor matches authenticated user
+    if (verified.depositor !== req.publicKey) {
+      return res.status(403).json({ 
+        error: "Transaction depositor does not match authenticated user" 
+      });
+    }
+
+    // Calculate tickets based on pool type (1 ticket per $1 per day)
+    const ticketMultipliers = {
+      weekly: 7,
+      biweekly: 15,
+      monthly: 30,
+      daily: 1, // fallback
+    };
+    const tickets = Math.floor(amount * (ticketMultipliers[poolType] || 1));
 
     // ── Record deposit ──────────────────────────────────────────────────────
     const id = uuidv4();
     const deposit = {
       id,
-      publicKey: req.publicKey,
+      publicKey: verified.depositor,
       poolType,
-      amount,
+      amount: verified.amount,
       txHash,
-      tickets: Math.floor(amount), // 1 ticket per USDC
-      depositedAt: new Date().toISOString(),
+      tickets,
+      depositedAt: verified.timestamp.toISOString(),
       withdrawnAt: null,
+      ledger: verified.ledger,
     };
 
     store.deposits.set(id, deposit);

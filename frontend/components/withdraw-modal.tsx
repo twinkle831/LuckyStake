@@ -145,7 +145,7 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
                     <span className="text-xs text-muted-foreground">
                       Available:{" "}
                       <span className="text-foreground">
-                        ${poolBalance.toLocaleString()} USDC
+                        {poolBalance.toLocaleString()} XLM
                       </span>
                     </span>
                   </div>
@@ -158,7 +158,7 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
                       className="flex-1 bg-transparent font-display text-3xl font-bold text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     <span className="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground">
-                      USDC
+                      XLM
                     </span>
                   </div>
                   <div className="flex gap-2 mt-3">
@@ -214,7 +214,7 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
                     Accrued Interest
                   </p>
                   <p className="font-display text-4xl font-bold text-accent">
-                    ${accrued.toFixed(2)}
+                    {accrued.toFixed(2)} XLM
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     From {pool.name} yield generation
@@ -237,8 +237,8 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {mode === "withdraw"
-                ? `Withdraw ${numAmount > 0 ? `$${numAmount.toLocaleString()}` : ""}`
-                : `Claim $${accrued.toFixed(2)}`}
+                ? `Withdraw ${numAmount > 0 ? `${numAmount.toLocaleString()} XLM` : ""}`
+                : `Claim ${accrued.toFixed(2)} XLM`}
               <ArrowRight className="h-4 w-4" />
             </button>
           </>
@@ -260,7 +260,7 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Amount</span>
                 <span className="font-bold text-foreground">
-                  ${mode === "withdraw" ? numAmount.toLocaleString() : accrued.toFixed(2)} USDC
+                  {mode === "withdraw" ? numAmount.toLocaleString() : accrued.toFixed(2)} XLM
                 </span>
               </div>
               <div className="flex justify-between text-sm mt-2">
@@ -298,8 +298,8 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
             </h3>
             <p className="mt-2 text-sm text-muted-foreground text-center">
               {mode === "withdraw"
-                ? `$${numAmount.toLocaleString()} USDC has been returned to your wallet from the ${pool.name}.`
-                : `$${accrued.toFixed(2)} USDC interest has been sent to your wallet.`}
+                ? `${numAmount.toLocaleString()} XLM has been returned to your wallet from the ${pool.name}.`
+                : `${accrued.toFixed(2)} XLM interest has been sent to your wallet.`}
             </p>
 
             <div className="flex gap-3 mt-6 w-full">

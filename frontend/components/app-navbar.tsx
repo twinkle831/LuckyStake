@@ -133,7 +133,7 @@ export function AppNavbar({ onConnectWallet, activeTab, onTabChange }: Props) {
                   <div className="mb-3 rounded-lg bg-secondary/50 px-3 py-2">
                     <p className="text-xs text-muted-foreground">Balance</p>
                     <p className="font-display text-sm font-bold text-foreground">
-                      {balance} USDC
+                      {balance} XLM
                     </p>
                   </div>
                   <button

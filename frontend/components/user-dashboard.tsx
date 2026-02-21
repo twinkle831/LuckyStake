@@ -131,17 +131,17 @@ export function UserDashboard({ onWithdraw }: Props) {
         <StatCard
           icon={<Wallet className="h-3.5 w-3.5" />}
           label="Balance"
-          value={`${balance} USDC`}
+          value={`${balance} XLM`}
         />
         <StatCard
           icon={<TrendingUp className="h-3.5 w-3.5" />}
           label="Net Deposited"
-          value={`$${netDeposited.toLocaleString()}`}
+          value={`${netDeposited.toLocaleString()} XLM`}
         />
         <StatCard
           icon={<TrendingDown className="h-3.5 w-3.5" />}
           label="Total Withdrawn"
-          value={`$${totalWithdrawn.toLocaleString()}`}
+          value={`${totalWithdrawn.toLocaleString()} XLM`}
         />
         <StatCard
           icon={<Ticket className="h-3.5 w-3.5" />}
@@ -339,7 +339,7 @@ function TransactionRow({ entry }: { entry: DepositEntry }) {
         <div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold text-foreground">
-              {cfg.sign}${entry.amount.toLocaleString()} USDC
+              {cfg.sign}{entry.amount.toLocaleString()} XLM
             </p>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${cfg.badge}`}

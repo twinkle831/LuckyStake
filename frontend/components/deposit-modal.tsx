@@ -5,6 +5,7 @@ import { X, Loader2, ArrowRight, Ticket, TrendingUp, Shield, AlertCircle } from 
 import { useWallet } from "@/context/wallet-context"
 import { type Pool, calcTickets, calcWinProbability } from "@/lib/pool-data"
 import { addDeposit } from "@/lib/deposit-store"
+import { executeDeposit } from "@/lib/soroban-contracts"
 
 interface Props {
   pool: Pool | null
@@ -14,11 +15,13 @@ interface Props {
 }
 
 export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
-  const { isConnected, balance } = useWallet()
+  const { isConnected, balance, address, walletType, token } = useWallet()
   const [amount, setAmount] = useState("")
   const [privacyMode, setPrivacyMode] = useState(false)
   const [isDepositing, setIsDepositing] = useState(false)
   const [step, setStep] = useState<"input" | "confirm" | "success">("input")
+  const [error, setError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string>("")
 
   const numAmount = parseFloat(amount) || 0
 
@@ -44,23 +47,69 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
   }
 
   async function handleDeposit() {
-    if (!pool || !isValid) return
+    if (!pool || !isValid || !address || !walletType) {
+      setError("Please connect your wallet first")
+      return
+    }
+    
+    setError(null)
     setStep("confirm")
     setIsDepositing(true)
 
-    // Simulate Soroban contract call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      // Execute deposit: build, sign, submit, wait for confirmation
+      const result = await executeDeposit(
+        pool.id,
+        numAmount,
+        address,
+        walletType
+      )
 
-    addDeposit({
-      poolId: pool.id,
-      poolName: pool.name,
-      amount: numAmount,
-      tickets,
-      winProbability: winProb,
-    })
+      if (!result.success) {
+        throw new Error(result.error || "Deposit failed")
+      }
 
-    setIsDepositing(false)
-    setStep("success")
+      setTxHash(result.txHash)
+
+      // Call backend to index the deposit
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+      const response = await fetch(`${API}/api/deposits`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          poolType: pool.id,
+          amount: numAmount,
+          txHash: result.txHash,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Backend error: ${response.status}`)
+      }
+
+      const { deposit } = await response.json()
+
+      // Update local store
+      addDeposit({
+        poolId: pool.id,
+        poolName: pool.name,
+        amount: numAmount,
+        tickets,
+        winProbability: winProb,
+      })
+
+      setIsDepositing(false)
+      setStep("success")
+    } catch (err: any) {
+      console.error("Deposit error:", err)
+      setError(err?.message || "Failed to complete deposit")
+      setIsDepositing(false)
+      setStep("input")
+    }
   }
 
   if (!open || !pool) return null
@@ -102,7 +151,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs text-muted-foreground">Deposit Amount</label>
                 <span className="text-xs text-muted-foreground">
-                  Balance: <span className="text-foreground">{balance} USDC</span>
+                  Balance: <span className="text-foreground">{balance} XLM</span>
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -115,18 +164,18 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                   className="flex-1 bg-transparent font-display text-3xl font-bold text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground">
-                  USDC
+                  XLM
                 </span>
               </div>
               {/* Quick amounts */}
               <div className="flex gap-2 mt-3">
-                {[100, 500, 1000, 5000].map((val) => (
+                {[10, 50, 100, 500].map((val) => (
                   <button
                     key={val}
                     onClick={() => setAmount(String(val))}
                     className="rounded-lg border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
-                    ${val.toLocaleString()}
+                    {val} XLM
                   </button>
                 ))}
                 <button
@@ -198,13 +247,19 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
             {numAmount > 0 && numAmount < pool.minDeposit && (
               <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" />
-                Minimum deposit is ${pool.minDeposit} USDC
+                Minimum deposit is {pool.minDeposit} XLM
               </div>
             )}
             {numAmount > balanceNum && (
               <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Insufficient balance
+              </div>
+            )}
+            {error && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-destructive rounded-lg bg-destructive/10 p-3">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
 
@@ -214,7 +269,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
               disabled={!isValid || numAmount <= 0}
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Deposit {numAmount > 0 ? `$${numAmount.toLocaleString()} USDC` : ""}
+              Deposit {numAmount > 0 ? `${numAmount.toLocaleString()} XLM` : ""}
               <ArrowRight className="h-4 w-4" />
             </button>
           </>
@@ -225,16 +280,17 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="h-12 w-12 animate-spin text-accent mb-6" />
             <h3 className="font-display text-xl font-bold text-foreground">
-              Signing Transaction
+              {txHash ? "Confirming Transaction" : "Signing Transaction"}
             </h3>
             <p className="mt-2 text-sm text-muted-foreground text-center max-w-xs">
-              Please approve the Soroban deposit() call in your wallet. This
-              includes contract call fees.
+              {txHash
+                ? "Waiting for transaction confirmation on Stellar network..."
+                : "Please approve the Soroban deposit() call in your wallet. This includes contract call fees."}
             </p>
             <div className="mt-6 rounded-xl bg-secondary/30 p-4 w-full">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Amount</span>
-                <span className="font-bold text-foreground">${numAmount.toLocaleString()} USDC</span>
+                <span className="font-bold text-foreground">{numAmount.toLocaleString()} XLM</span>
               </div>
               <div className="flex justify-between text-sm mt-2">
                 <span className="text-muted-foreground">Pool</span>
@@ -242,8 +298,16 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
               </div>
               <div className="flex justify-between text-sm mt-2">
                 <span className="text-muted-foreground">Est. Fee</span>
-                <span className="text-foreground">~0.01 XLM</span>
+                <span className="text-foreground">~0.0001 XLM</span>
               </div>
+              {txHash && (
+                <div className="flex justify-between text-sm mt-2 pt-2 border-t border-border">
+                  <span className="text-muted-foreground">Transaction</span>
+                  <span className="text-foreground font-mono text-xs break-all text-right max-w-[200px]">
+                    {txHash.slice(0, 8)}...{txHash.slice(-8)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -266,7 +330,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
               Deposit Confirmed
             </h3>
             <p className="mt-2 text-sm text-muted-foreground text-center">
-              Your ${numAmount.toLocaleString()} USDC has been deposited into the{" "}
+              Your {numAmount.toLocaleString()} XLM has been deposited into the{" "}
               {pool.name}. You received {tickets.toLocaleString()} tickets.
             </p>
 

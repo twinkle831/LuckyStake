@@ -12,7 +12,7 @@ router.get("/", (req, res) => {
     ...pool,
     // Simulated APY yield (replace with real Blend/AMM yield data)
     estimatedAPY: pool.type === "daily" ? 4.2 : pool.type === "weekly" ? 5.8 : 7.1,
-    currency: "USDC",
+    currency: "XLM",
   }));
   res.json({ pools });
 });
@@ -32,8 +32,8 @@ router.get("/:type", (req, res) => {
   res.json({
     ...pool,
     estimatedAPY: type === "daily" ? 4.2 : type === "weekly" ? 5.8 : 7.1,
-    currency: "USDC",
-    ticketRatio: "1 ticket per USDC per day",
+    currency: "XLM",
+    ticketRatio: "1 ticket per 1 XLM per day",
   });
 });
 
@@ -54,7 +54,7 @@ router.get("/:type/my-position", auth, (req, res) => {
     poolType: type,
     publicKey: req.publicKey,
     deposited: totalDeposited,
-    tickets: Math.floor(totalDeposited), // simplified: 1 ticket per USDC
+    tickets: Math.floor(totalDeposited), // simplified: 1 ticket per XLM (scaled by period in real calc)
     sharePercent: pool.totalDeposited > 0
       ? ((totalDeposited / pool.totalDeposited) * 100).toFixed(4)
       : "0",

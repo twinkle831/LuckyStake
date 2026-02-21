@@ -103,7 +103,7 @@ function AppContent() {
           </h1>
           <p className="mt-2 text-muted-foreground">
             {tab === "pools" &&
-              "Select a pool, deposit USDC, and start earning tickets for the next draw."}
+              "Select a pool, deposit XLM, and start earning tickets for the next draw."}
             {tab === "dashboard" &&
               "Track your deposits, tickets, and upcoming draws."}
             {tab === "draws" &&

@@ -36,7 +36,7 @@ export interface WalletState {
   address: string | null
   isConnected: boolean
   isConnecting: boolean
-  balance: string          // human-readable USDC balance e.g. "1,234.56"
+  balance: string          // human-readable XLM balance e.g. "1,234.56"
   network: string          // human-readable label e.g. "Stellar Testnet"
   walletType: WalletType | null
 }
@@ -92,22 +92,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   /**
    * Called by ConnectWalletModal right after wallet extension popup approves.
-   * 1. Fetches real USDC balance from Stellar Horizon via backend
+   * 1. Fetches real XLM balance from Stellar Horizon via backend
    * 2. Authenticates with backend → gets JWT
    * 3. Updates context + persists session
    */
   const setConnection = useCallback(async (conn: WalletConnection) => {
     setWallet((prev) => ({ ...prev, isConnecting: true }))
 
-    // Fetch real balance from backend (calls Stellar Horizon)
-    let usdcBalance = "0"
+    // Fetch real XLM balance from backend (calls Stellar Horizon)
+    let xlmBalance = "0"
     try {
       const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
       const res = await fetch(`${API}/api/wallet/${conn.address}`)
       if (res.ok) {
         const data = await res.json()
-        usdcBalance = data.usdcBalance
-          ? Number(data.usdcBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        xlmBalance = data.xlmBalance != null
+          ? Number(data.xlmBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 7 })
           : "0"
       }
     } catch { /* backend not running, fine */ }
@@ -124,7 +124,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       address: conn.address,
       isConnected: true,
       isConnecting: false,
-      balance: usdcBalance,
+      balance: xlmBalance,
       network: networkLabel,
       walletType: conn.walletType,
     }
