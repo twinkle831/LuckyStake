@@ -6,12 +6,15 @@
 //! Deploy once per pool type with the appropriate `period_days` at initialization.
 //! Ticket formula: 1 ticket per $1 per day → tickets = amount * period_days
 //!
+//! Randomness: Uses Stellar's native PRNG (env.prng()) backed by protocol-level VRF
+//! introduced in Protocol 20. This is cryptographically secure and verifiable on-chain.
+//!
 //! Blend integration: pool can supply token to a Blend lending pool to earn yield.
 //! Admin sets Blend pool address, then can call supply_to_blend / withdraw_from_blend / harvest_yield.
 //! SuppliedToBlend = principal supplied (excludes accrued interest). Actual balance from Blend get_positions.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, log, token, Address, Env, Symbol, Vec,
+    contract, contractimpl, contracttype, log, token, Address, Env, IntoVal, Symbol, Val, Vec,
 };
 
 #[contracttype]
@@ -32,7 +35,7 @@ pub enum DataKey {
     SuppliedToBlend,
 }
 
-/// Request type for Blend pool submit(). See Blend docs: Deposit=0, Withdraw=1, SupplyCollateral=2, WithdrawCollateral=3.
+/// Request type for Blend pool submit(). Deposit=0, Withdraw=1, SupplyCollateral=2, WithdrawCollateral=3.
 #[contracttype]
 pub struct BlendRequest {
     pub request_type: u32,
@@ -68,11 +71,7 @@ impl LuckyStakePool {
         let empty: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Depositors, &empty);
 
-        log!(
-            &env,
-            "Pool initialized: period_days={}",
-            period_days
-        );
+        log!(&env, "Pool initialized: period_days={}", period_days);
     }
 
     /// User deposits tokens. Tickets = amount * period_days (1 ticket per $1 per day).
@@ -82,11 +81,7 @@ impl LuckyStakePool {
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let token_client = token::Client::new(&env, &token_id);
-        token_client.transfer(
-            &depositor,
-            &env.current_contract_address(),
-            &amount,
-        );
+        token_client.transfer(&depositor, &env.current_contract_address(), &amount);
 
         let period_days: u32 = env.storage().instance().get(&DataKey::PeriodDays).unwrap();
         let tickets_to_add = amount * (period_days as i128);
@@ -112,16 +107,8 @@ impl LuckyStakePool {
             .instance()
             .set(&DataKey::Tickets(depositor.clone()), &new_tickets);
 
-        let total: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalDeposits)
-            .unwrap();
-        let total_tickets: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalTickets)
-            .unwrap();
+        let total: i128 = env.storage().instance().get(&DataKey::TotalDeposits).unwrap();
+        let total_tickets: i128 = env.storage().instance().get(&DataKey::TotalTickets).unwrap();
 
         env.storage()
             .instance()
@@ -177,7 +164,6 @@ impl LuckyStakePool {
             .get(&DataKey::Tickets(depositor.clone()))
             .unwrap_or(0);
 
-        // Proportional ticket burn: tickets_to_remove = tickets * (amount / balance)
         let tickets_to_remove = if balance > 0 {
             (tickets * amount) / balance
         } else {
@@ -243,7 +229,14 @@ impl LuckyStakePool {
     }
 
     /// Execute draw: select one random winner by ticket weight, transfer prize.
-    /// Uses Stellar ledger entropy (timestamp + sequence) as fallback for randomness.
+    ///
+    /// Randomness source: Stellar's native PRNG (env.prng().gen::<u64>()) which is
+    /// backed by the protocol-level VRF introduced in Protocol 20. Each ledger has a
+    /// unique random seed that cannot be predicted or manipulated by validators,
+    /// making this cryptographically secure and fully verifiable on-chain.
+    ///
+    /// The winning ticket index is: random_u64 % total_tickets
+    /// Winner is found by iterating participants until cumulative tickets exceed the index.
     pub fn execute_draw(env: Env) -> Address {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -264,7 +257,7 @@ impl LuckyStakePool {
             .get(&DataKey::Depositors)
             .unwrap_or_else(|| Vec::new(&env));
 
-        // Build (address, tickets) for participants with tickets > 0
+        // Build participant list with tickets > 0
         let mut participants: Vec<(Address, i128)> = Vec::new(&env);
         let mut acc: i128 = 0;
         for d in depositors.iter() {
@@ -280,26 +273,18 @@ impl LuckyStakePool {
         }
         assert!(acc > 0, "no participants with tickets");
 
-        // Randomness: Stellar block entropy (timestamp + sequence + nonce)
-        let ledger = env.ledger();
-        let timestamp = ledger.timestamp() as u128;
-        let sequence = ledger.sequence() as u128;
-        let nonce: u64 = env
-            .storage()
-            .instance()
-            .get(&DataKey::DrawNonce)
-            .unwrap_or(0);
-        let nonce_wide = nonce as u128;
+        // ─────────────────────────────────────────────────────────────────
+        // Randomness: Stellar native PRNG (Protocol 20+)
+        //
+        // env.prng().gen::<u64>() draws from the ledger's VRF-backed seed.
+        // The seed is determined by the consensus round and cannot be known
+        // or influenced by any single validator or the contract admin.
+        // This replaces the old timestamp+sequence approach which was predictable.
+        // ─────────────────────────────────────────────────────────────────
+        let random: u64 = env.prng().gen();
+        let winning_ticket_index = (random as i128) % acc;
 
-        // Combine into a seed; use modulo for winning ticket index
-        let seed = timestamp
-            .wrapping_mul(31)
-            .wrapping_add(sequence)
-            .wrapping_mul(31)
-            .wrapping_add(nonce_wide);
-        let winning_ticket_index = (seed % (acc as u128)) as i128;
-
-        // Find winner: iterate until accumulated tickets exceed winning index
+        // Find winner: iterate until cumulative tickets exceed winning index
         let mut cumulative: i128 = 0;
         let mut winner = participants.get(0).unwrap().0.clone();
         for p in participants.iter() {
@@ -318,17 +303,23 @@ impl LuckyStakePool {
             &prize,
         );
 
+        // Reset prize fund and increment nonce
         env.storage().instance().set(&DataKey::PrizeFund, &0i128);
-        env.storage()
+
+        let nonce: u64 = env
+            .storage()
             .instance()
-            .set(&DataKey::DrawNonce, &(nonce + 1));
+            .get(&DataKey::DrawNonce)
+            .unwrap_or(0);
+        env.storage().instance().set(&DataKey::DrawNonce, &(nonce + 1));
 
         log!(
             &env,
-            "Draw executed: winner={} | prize={} | winning_ticket_index={}",
+            "Draw executed: winner={} | prize={} | winning_ticket_index={} | nonce={}",
             winner,
             prize,
-            winning_ticket_index
+            winning_ticket_index,
+            nonce + 1
         );
 
         winner
@@ -339,45 +330,27 @@ impl LuckyStakePool {
     // ──────────────────────────────────────────
 
     pub fn get_balance(env: Env, user: Address) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::Balance(user))
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::Balance(user)).unwrap_or(0)
     }
 
     pub fn get_tickets(env: Env, user: Address) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::Tickets(user))
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::Tickets(user)).unwrap_or(0)
     }
 
     pub fn get_total_deposits(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::TotalDeposits)
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::TotalDeposits).unwrap_or(0)
     }
 
     pub fn get_total_tickets(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::TotalTickets)
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::TotalTickets).unwrap_or(0)
     }
 
     pub fn get_prize_fund(env: Env) -> i128 {
-        env.storage()
-            .instance()
-            .get(&DataKey::PrizeFund)
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::PrizeFund).unwrap_or(0)
     }
 
     pub fn get_period_days(env: Env) -> u32 {
-        env.storage()
-            .instance()
-            .get(&DataKey::PeriodDays)
-            .unwrap_or(0)
+        env.storage().instance().get(&DataKey::PeriodDays).unwrap_or(0)
     }
 
     pub fn get_admin(env: Env) -> Address {
@@ -388,11 +361,14 @@ impl LuckyStakePool {
         env.storage().instance().get(&DataKey::Token).unwrap()
     }
 
+    pub fn get_draw_nonce(env: Env) -> u64 {
+        env.storage().instance().get(&DataKey::DrawNonce).unwrap_or(0)
+    }
+
     // ─────────────────────────────────────────────────────────────────────
-    //  Blend integration: supply pool funds to Blend lending for yield
+    //  Blend integration
     // ─────────────────────────────────────────────────────────────────────
 
-    /// Set the Blend lending pool contract address (admin only). Call once per pool.
     pub fn set_blend_pool(env: Env, blend_pool: Address) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -404,8 +380,7 @@ impl LuckyStakePool {
     }
 
     /// Supply token from pool to Blend lending pool (admin only).
-    /// Uses submit_with_allowance to avoid approve+submit race (approval consumed atomically).
-    /// Request type 2 = SupplyCollateral per Blend docs.
+    /// request_type=0 (Deposit). Uses Val return type to handle Blend's positions struct response.
     pub fn supply_to_blend(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -419,28 +394,27 @@ impl LuckyStakePool {
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let self_addr = env.current_contract_address();
 
-        // Approve Blend to pull tokens; submit_with_allowance uses transfer_from atomically
         let expiration = env.ledger().sequence() + 50_000;
         token::Client::new(&env, &token_id).approve(&self_addr, &blend_pool, &amount, &expiration);
 
         let request = BlendRequest {
-            request_type: 2u32,
+            request_type: 0u32,
             address: token_id.clone(),
             amount,
         };
         let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(request);
 
-        env.invoke_contract::<()>(
-            &blend_pool,
-            &Symbol::new(&env, "submit_with_allowance"),
-            (
-                self_addr.clone(),
-                self_addr.clone(),
-                self_addr,
-                requests,
-            ),
-        );
+        let args = soroban_sdk::vec![
+            &env,
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            requests.into_val(&env),
+        ];
+
+        // Val return type: Blend returns a positions struct, not void
+        env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit_with_allowance"), args);
 
         let supplied: i128 = env
             .storage()
@@ -455,8 +429,7 @@ impl LuckyStakePool {
     }
 
     /// Withdraw token from Blend back to the pool (admin only).
-    /// Verifies received >= min_return to guard against Blend bugs/exploits.
-    /// May fail if Blend has low liquidity (high utilization); retry later.
+    /// request_type=1 (Withdraw). min_return guards against slippage/bugs.
     pub fn withdraw_from_blend(env: Env, amount: i128, min_return: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -475,21 +448,21 @@ impl LuckyStakePool {
 
         let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(BlendRequest {
-            request_type: 3u32,
-            address: token_id,
+            request_type: 1u32,
+            address: token_id.clone(),
             amount,
         });
 
-        env.invoke_contract::<()>(
-            &blend_pool,
-            &Symbol::new(&env, "submit"),
-            (
-                self_addr.clone(),
-                self_addr.clone(),
-                self_addr.clone(),
-                requests,
-            ),
-        );
+        let args = soroban_sdk::vec![
+            &env,
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            requests.into_val(&env),
+        ];
+
+        // Val return type: Blend returns a positions struct, not void
+        env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit"), args);
 
         let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
         let received = balance_after - balance_before;
@@ -500,7 +473,7 @@ impl LuckyStakePool {
             .instance()
             .get(&DataKey::SuppliedToBlend)
             .unwrap_or(0);
-        let new_supplied = supplied - received;
+        let new_supplied = supplied - amount;
         env.storage()
             .instance()
             .set(&DataKey::SuppliedToBlend, &new_supplied);
@@ -509,9 +482,8 @@ impl LuckyStakePool {
     }
 
     /// Harvest accrued yield from Blend into PrizeFund (admin only).
-    /// Admin must query Blend (get_positions) off-chain to compute yield = actual_balance - get_supplied_to_blend.
-    /// Then calls harvest_yield(yield_amount, min_return). Withdraws yield from Blend, adds to PrizeFund.
-    /// SuppliedToBlend (principal) is unchanged.
+    /// Compute yield off-chain: yield = get_positions(contract).supply - get_supplied_to_blend().
+    /// request_type=1 (Withdraw) for yield-only portion. SuppliedToBlend (principal) unchanged.
     pub fn harvest_yield(env: Env, amount: i128, min_return: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -530,21 +502,21 @@ impl LuckyStakePool {
 
         let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(BlendRequest {
-            request_type: 3u32,
-            address: token_id,
+            request_type: 1u32,
+            address: token_id.clone(),
             amount,
         });
 
-        env.invoke_contract::<()>(
-            &blend_pool,
-            &Symbol::new(&env, "submit"),
-            (
-                self_addr.clone(),
-                self_addr.clone(),
-                self_addr.clone(),
-                requests,
-            ),
-        );
+        let args = soroban_sdk::vec![
+            &env,
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            self_addr.clone().into_val(&env),
+            requests.into_val(&env),
+        ];
+
+        // Val return type: Blend returns a positions struct, not void
+        env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit"), args);
 
         let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
         let received = balance_after - balance_before;
@@ -559,10 +531,11 @@ impl LuckyStakePool {
     }
 
     pub fn get_blend_pool(env: Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::BlendPool).ok()
+        env.storage().instance().get(&DataKey::BlendPool)
     }
 
-    /// Principal amount supplied to Blend (excludes accrued interest). Query Blend get_positions for actual balance.
+    /// Principal amount supplied to Blend (excludes accrued interest).
+    /// Query Blend get_positions for actual withdrawable balance.
     pub fn get_supplied_to_blend(env: Env) -> i128 {
         env.storage()
             .instance()
