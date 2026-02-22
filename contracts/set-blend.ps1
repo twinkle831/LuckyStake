@@ -40,3 +40,4 @@ Write-Host ""
 Write-Host "=== Blend Pool Set for All Pools ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "You can now call supply_to_blend() on each pool." -ForegroundColor Yellow
+Write-Host "Use harvest-yield.ps1 to move accrued yield into PrizeFund (query Blend get_positions off-chain first)." -ForegroundColor Yellow

@@ -7,7 +7,8 @@
 //! Ticket formula: 1 ticket per $1 per day → tickets = amount * period_days
 //!
 //! Blend integration: pool can supply token to a Blend lending pool to earn yield.
-//! Admin sets Blend pool address, then can call supply_to_blend / withdraw_from_blend.
+//! Admin sets Blend pool address, then can call supply_to_blend / withdraw_from_blend / harvest_yield.
+//! SuppliedToBlend = principal supplied (excludes accrued interest). Actual balance from Blend get_positions.
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, log, token, Address, Env, Symbol, Vec,
@@ -27,7 +28,7 @@ pub enum DataKey {
     DrawNonce,
     /// Blend lending pool contract address (optional)
     BlendPool,
-    /// Total amount currently supplied to Blend (for display/indexing)
+    /// Principal amount supplied to Blend (excludes accrued interest; actual balance from Blend get_positions)
     SuppliedToBlend,
 }
 
@@ -403,7 +404,7 @@ impl LuckyStakePool {
     }
 
     /// Supply token from pool to Blend lending pool (admin only).
-    /// Approves Blend to pull token, then submits a SupplyCollateral request.
+    /// Uses submit_with_allowance to avoid approve+submit race (approval consumed atomically).
     /// Request type 2 = SupplyCollateral per Blend docs.
     pub fn supply_to_blend(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
@@ -416,27 +417,23 @@ impl LuckyStakePool {
             .get(&DataKey::BlendPool)
             .unwrap_or_else(|| panic!("Blend pool not set"));
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
-
-        let token_client = token::Client::new(&env, &token_id);
         let self_addr = env.current_contract_address();
 
-        // Approve Blend pool to pull tokens from this contract
-        let expiration = env.ledger().sequence() + 1000;
-        token_client.approve(&self_addr, &blend_pool, &amount, &expiration);
+        // Approve Blend to pull tokens; submit_with_allowance uses transfer_from atomically
+        let expiration = env.ledger().sequence() + 50_000;
+        token::Client::new(&env, &token_id).approve(&self_addr, &blend_pool, &amount, &expiration);
 
-        // Submit SupplyCollateral (2): from=self, to=self, spender=self, request=(2, token, amount)
         let request = BlendRequest {
             request_type: 2u32,
             address: token_id.clone(),
             amount,
         };
-        let requests: Vec<BlendRequest> = Vec::new(&env);
-        let mut requests = requests;
+        let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(request);
 
         env.invoke_contract::<()>(
             &blend_pool,
-            &Symbol::new(&env, "submit"),
+            &Symbol::new(&env, "submit_with_allowance"),
             (
                 self_addr.clone(),
                 self_addr.clone(),
@@ -458,28 +455,30 @@ impl LuckyStakePool {
     }
 
     /// Withdraw token from Blend back to the pool (admin only).
-    /// Request type 3 = WithdrawCollateral per Blend docs.
-    pub fn withdraw_from_blend(env: Env, amount: i128) {
+    /// Verifies received >= min_return to guard against Blend bugs/exploits.
+    /// May fail if Blend has low liquidity (high utilization); retry later.
+    pub fn withdraw_from_blend(env: Env, amount: i128, min_return: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
         assert!(amount > 0, "amount must be positive");
+        assert!(min_return >= 0 && min_return <= amount, "min_return must be in [0, amount]");
+
+        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let self_addr = env.current_contract_address();
+        let balance_before = token::Client::new(&env, &token_id).balance(&self_addr);
 
         let blend_pool: Address = env
             .storage()
             .instance()
             .get(&DataKey::BlendPool)
             .unwrap_or_else(|| panic!("Blend pool not set"));
-        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
-        let self_addr = env.current_contract_address();
 
-        let request = BlendRequest {
+        let mut requests: Vec<BlendRequest> = Vec::new(&env);
+        requests.push_back(BlendRequest {
             request_type: 3u32,
             address: token_id,
             amount,
-        };
-        let requests: Vec<BlendRequest> = Vec::new(&env);
-        let mut requests = requests;
-        requests.push_back(request);
+        });
 
         env.invoke_contract::<()>(
             &blend_pool,
@@ -487,28 +486,83 @@ impl LuckyStakePool {
             (
                 self_addr.clone(),
                 self_addr.clone(),
-                self_addr,
+                self_addr.clone(),
                 requests,
             ),
         );
+
+        let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
+        let received = balance_after - balance_before;
+        assert!(received >= min_return, "received {} < min_return {}", received, min_return);
 
         let supplied: i128 = env
             .storage()
             .instance()
             .get(&DataKey::SuppliedToBlend)
             .unwrap_or(0);
-        let new_supplied = supplied - amount;
+        let new_supplied = supplied - received;
         env.storage()
             .instance()
             .set(&DataKey::SuppliedToBlend, &new_supplied);
 
-        log!(&env, "Withdrew from Blend: {} | remaining supplied: {}", amount, new_supplied);
+        log!(&env, "Withdrew from Blend: received {} | remaining supplied: {}", received, new_supplied);
+    }
+
+    /// Harvest accrued yield from Blend into PrizeFund (admin only).
+    /// Admin must query Blend (get_positions) off-chain to compute yield = actual_balance - get_supplied_to_blend.
+    /// Then calls harvest_yield(yield_amount, min_return). Withdraws yield from Blend, adds to PrizeFund.
+    /// SuppliedToBlend (principal) is unchanged.
+    pub fn harvest_yield(env: Env, amount: i128, min_return: i128) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        assert!(amount > 0, "amount must be positive");
+        assert!(min_return >= 0 && min_return <= amount, "min_return must be in [0, amount]");
+
+        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let self_addr = env.current_contract_address();
+        let balance_before = token::Client::new(&env, &token_id).balance(&self_addr);
+
+        let blend_pool: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::BlendPool)
+            .unwrap_or_else(|| panic!("Blend pool not set"));
+
+        let mut requests: Vec<BlendRequest> = Vec::new(&env);
+        requests.push_back(BlendRequest {
+            request_type: 3u32,
+            address: token_id,
+            amount,
+        });
+
+        env.invoke_contract::<()>(
+            &blend_pool,
+            &Symbol::new(&env, "submit"),
+            (
+                self_addr.clone(),
+                self_addr.clone(),
+                self_addr.clone(),
+                requests,
+            ),
+        );
+
+        let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
+        let received = balance_after - balance_before;
+        assert!(received >= min_return, "received {} < min_return {}", received, min_return);
+
+        let prize: i128 = env.storage().instance().get(&DataKey::PrizeFund).unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::PrizeFund, &(prize + received));
+
+        log!(&env, "Harvested yield: {} -> PrizeFund (total: {})", received, prize + received);
     }
 
     pub fn get_blend_pool(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::BlendPool).ok()
     }
 
+    /// Principal amount supplied to Blend (excludes accrued interest). Query Blend get_positions for actual balance.
     pub fn get_supplied_to_blend(env: Env) -> i128 {
         env.storage()
             .instance()

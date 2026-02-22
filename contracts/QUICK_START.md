@@ -52,6 +52,22 @@ This will:
 .\supply-to-blend.ps1 -SecretKey "YOUR_SECRET_KEY" -ContractId "CBI7W6JDUG3YQ6SSB622JSNMXRH3AJF6AY336W2QERONGFYIFOV636LN" -Amount "1000000000"
 ```
 
+### Step 4: Harvest Yield (Optional)
+
+Query Blend `get_positions(pool_contract_address)` off-chain to get actual balance. Then: `yield = actual - get_supplied_to_blend`.
+
+```powershell
+# Example: Harvest 50 XLM of yield
+stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7BKVSD --network testnet --source-account "YOUR_SECRET_KEY" harvest_yield --amount 500000000 --min_return 500000000
+```
+
+### Step 5: Withdraw from Blend (When Needed)
+
+```powershell
+# Withdraw 100 XLM; require at least 99 XLM (min_return)
+stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7BKVSD --network testnet --source-account "YOUR_SECRET_KEY" withdraw_from_blend --amount 1000000000 --min_return 990000000
+```
+
 ---
 
 ## Option 2: Manual Commands (Step-by-Step)
@@ -157,7 +173,7 @@ stellar contract invoke `
 # Check Blend pool is set
 stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7BKVSD --network testnet get_blend_pool
 
-# Check amount supplied
+# Check principal supplied (excludes interest; query Blend get_positions for actual balance)
 stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7BKVSD --network testnet get_supplied_to_blend
 ```
 
@@ -182,6 +198,7 @@ stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7
 - **"Contract not found"**: Verify contract IDs match your `.env` file
 - **"Already initialized"**: This is normal if upgrading; skip initialization
 - **"Blend pool not set"**: Run `set_blend_pool` before `supply_to_blend`
+- **Withdrawal fails**: Blend may have low liquidity (high utilization); retry later
 
 ---
 
@@ -190,5 +207,7 @@ stellar contract invoke --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7
 1. ✅ Contracts upgraded with Blend functions
 2. ✅ Blend pool address set
 3. ✅ Funds supplied to Blend (optional - do when ready)
-4. 🔄 Restart backend to load updated contract code
-5. 🔄 Frontend will show "Deployed to Blend" in pool details
+4. 🔄 Periodically harvest yield: `.\harvest-yield.ps1` (query Blend get_positions off-chain first)
+5. 🔄 Withdraw when needed: `.\withdraw-from-blend.ps1 -Amount X -MinReturn Y`
+6. 🔄 Restart backend to load updated contract code
+7. 🔄 Frontend will show "Deployed to Blend" in pool details

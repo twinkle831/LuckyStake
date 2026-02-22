@@ -243,7 +243,8 @@ stellar contract invoke \
   --network testnet \
   get_blend_pool
 
-# Check amount supplied to Blend
+# Check principal supplied to Blend (excludes accrued interest)
+# For actual withdrawable balance, query Blend get_positions(contract_address) via SDK/RPC
 stellar contract invoke \
   --id CAE4BWUBL73EOR4PZNO55V6HH2YUENBQUO2UKMCFVGIKPQ3ZFM7BKVSD \
   --network testnet \
@@ -272,13 +273,54 @@ NEXT_PUBLIC_POOL_CONTRACT_MONTHLY=<NEW_MONTHLY_CONTRACT_ID>
 
 ---
 
-## Step 6: Test the Integration
+## Step 6: Harvest Yield (Optional)
+
+Blend accrues interest on supplied funds. To move yield into the prize fund:
+
+1. **Query Blend** off-chain (via [Blend SDK](https://github.com/blend-capital/blend-sdk-js) or RPC): call `get_positions(pool_contract_address)` to get actual withdrawable balance.
+2. **Compute yield**: `yield = actual_balance - get_supplied_to_blend()`
+3. **Harvest**: call `harvest_yield(yield_amount, min_return)` (e.g. `min_return = yield_amount` for exact, or slightly lower to allow rounding).
+
+```bash
+# Example: Harvest 50 XLM (500000000 stroops) of yield
+stellar contract invoke \
+  --id <POOL_CONTRACT_ID> \
+  --network testnet \
+  --source-account YOUR_SECRET_KEY \
+  harvest_yield \
+  --amount 500000000 \
+  --min_return 500000000
+```
+
+---
+
+## Step 7: Withdraw from Blend (When Needed)
+
+To withdraw principal from Blend back to the pool:
+
+```bash
+# Withdraw 100 XLM; require at least 99 XLM received (min_return guards against slippage/bugs)
+stellar contract invoke \
+  --id <POOL_CONTRACT_ID> \
+  --network testnet \
+  --source-account YOUR_SECRET_KEY \
+  withdraw_from_blend \
+  --amount 1000000000 \
+  --min_return 990000000
+```
+
+**Note:** Withdrawal may fail if Blend has insufficient liquidity (high utilization). Per Blend docs, high utilization raises interest rates to incentivize repayment; retry later.
+
+---
+
+## Step 8: Test the Integration
 
 1. **Make a test deposit** via the frontend
 2. **Check pool stats** - verify `get_total_deposits()` increases
 3. **Supply to Blend** - call `supply_to_blend()` with a small amount
-4. **Verify** - call `get_supplied_to_blend()` to confirm amount
+4. **Verify** - call `get_supplied_to_blend()` to confirm principal amount
 5. **Check frontend** - pool detail panel should show "Deployed to Blend: X XLM"
+6. **Harvest yield** - periodically call `harvest_yield()` after querying Blend for actual balance
 
 ---
 
@@ -312,7 +354,24 @@ stellar contract invoke \
   --network testnet \
   --source-account YOUR_SECRET_KEY \
   supply_to_blend --amount $AMOUNT
+
+# 5. Harvest yield (after querying Blend for actual balance; yield = actual - get_supplied_to_blend)
+stellar contract invoke --id <POOL_CONTRACT_ID> --network testnet --source-account YOUR_SECRET_KEY \
+  harvest_yield --amount <YIELD_AMOUNT> --min_return <MIN_RETURN>
+
+# 6. Withdraw from Blend (min_return protects against slippage)
+stellar contract invoke --id <POOL_CONTRACT_ID> --network testnet --source-account YOUR_SECRET_KEY \
+  withdraw_from_blend --amount <AMOUNT> --min_return <MIN_RETURN>
 ```
+
+---
+
+## Important Notes
+
+- **`get_supplied_to_blend`** = principal only (excludes accrued interest). Query Blend `get_positions(contract_address)` for actual withdrawable balance.
+- **`harvest_yield(amount, min_return)`** moves accrued yield into PrizeFund. Admin must compute yield off-chain.
+- **`withdraw_from_blend(amount, min_return)`** verifies received >= min_return. May fail if Blend has low liquidity; retry later.
+- **`supply_to_blend`** uses `submit_with_allowance` for atomic approve+submit (avoids ledger expiration race).
 
 ---
 
@@ -322,4 +381,5 @@ stellar contract invoke \
 - **"Already initialized"**: Contract is already set up; skip initialization step
 - **"Blend pool not set"**: Run `set_blend_pool` before calling `supply_to_blend`
 - **"Insufficient balance"**: Ensure the pool contract has enough token balance before supplying to Blend
+- **Withdrawal fails**: Blend may have insufficient liquidity (high utilization). Retry later; high rates incentivize repayment.
 - **Build errors**: Ensure Rust and wasm32 target are installed correctly
