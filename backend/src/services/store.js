@@ -49,6 +49,31 @@ function nextDrawTime(type) {
   }
 }
 
+/** Advance nextDraw to the following period (call after successful on-chain draw). */
+function advanceNextDraw(type) {
+  const pool = store.pools.get(type);
+  if (!pool) return;
+  const from = new Date(pool.nextDraw);
+  switch (type) {
+    case "weekly":
+      from.setDate(from.getDate() + 7);
+      break;
+    case "biweekly":
+      from.setDate(from.getDate() + 14);
+      break;
+    case "monthly":
+      from.setMonth(from.getMonth() + 1);
+      from.setDate(1);
+      break;
+    default:
+      return;
+  }
+  pool.nextDraw = from.toISOString();
+}
+
+store.nextDrawTime = nextDrawTime;
+store.advanceNextDraw = advanceNextDraw;
+
 // Cleanup expired challenges (run every 10 min)
 setInterval(() => {
   const tenMinAgo = Date.now() - 10 * 60 * 1000;

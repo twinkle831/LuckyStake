@@ -13,6 +13,7 @@ const depositRoutes = require("./routes/deposits");
 const prizeRoutes = require("./routes/prizes");
 const userRoutes = require("./routes/users");
 const walletRoutes = require("./routes/wallet");
+const cronRoutes = require("./routes/cron");
 const { setupWebSocket } = require("./services/websocket");
 const { errorHandler } = require("./middleware/errorHandler");
 
@@ -75,6 +76,7 @@ app.use("/api/deposits", depositRoutes);
 app.use("/api/prizes", prizeRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/wallet", walletRoutes);
+app.use("/api/cron", cronRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -83,6 +85,14 @@ app.use((req, res) => {
 
 // ─── Error Handler ───────────────────────────────────────────────────────────
 app.use(errorHandler);
+
+// ─── Cron: auto harvest + execute draw when period ends ───────────────────────
+const cronDraw = require("./services/cron-draw");
+const CRON_INTERVAL_MS = parseInt(process.env.CRON_INTERVAL_MS, 10) || 60 * 60 * 1000;
+if (process.env.ADMIN_SECRET_KEY) {
+  cronDraw.startCron(CRON_INTERVAL_MS);
+  console.log(`Cron: draw checks every ${CRON_INTERVAL_MS / 60000} min`);
+}
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
