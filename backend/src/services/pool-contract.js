@@ -11,13 +11,18 @@ const {
   Keypair,
   Networks,
   xdr,
+  assembleTransaction, // ✅ directly from top-level in v12
+  nativeToScVal,
 } = require("@stellar/stellar-sdk");
-const stellarBase = require("@stellar/stellar-base");
-const { assembleTransaction } = require("@stellar/stellar-sdk/lib/rpc/transaction");
-const { Api } = require("@stellar/stellar-sdk/lib/rpc/api");
 
-const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
-const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
+// ✅ No need for @stellar/stellar-base or internal subpath imports
+// assembleTransaction and SorobanRpc.Api are both available from the top-level export
+
+const RPC_URL =
+  process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
+const NETWORK_PASSPHRASE =
+  process.env.STELLAR_NETWORK_PASSPHRASE ||
+  "Test SDF Network ; September 2015";
 const BASE_FEE = 100;
 
 const CONTRACTS = {
@@ -30,10 +35,12 @@ function getServer() {
   return new SorobanRpc.Server(RPC_URL);
 }
 
+/**
+ * Create an i128 ScVal from a JS number/bigint.
+ * nativeToScVal handles this cleanly in v12.
+ */
 function scValI128(value) {
-  const XdrLargeInt = stellarBase.XdrLargeInt ?? stellarBase.default?.XdrLargeInt;
-  if (XdrLargeInt) return new XdrLargeInt("i128", String(value)).toScVal();
-  throw new Error("XdrLargeInt not found in stellar-base - cannot create i128 ScVal");
+  return nativeToScVal(BigInt(value), { type: "i128" });
 }
 
 function getAdminKeypair() {
@@ -61,18 +68,29 @@ async function simulateRead(contractId, method, args = []) {
     .build();
 
   const sim = await server.simulateTransaction(tx);
-  if (Api.isSimulationError(sim)) {
+
+  // ✅ Use SorobanRpc.Api (not a separate internal import)
+  if (SorobanRpc.Api.isSimulationError(sim)) {
     throw new Error(`Simulate ${method} failed: ${JSON.stringify(sim)}`);
   }
+
   const result = sim.result?.retval;
   if (!result) return null;
-  const scv = xdr.ScVal.fromXDR(result, "base64");
-  if (scv.switch().name === "scvVoid") return null;
-  if (scv.switch().name === "scvI128") {
-    const lo = scv.i128().lo().low;
-    const hi = scv.i128().hi().low;
-    return BigInt(lo) + (BigInt(hi) << 32n);
+
+  // result is already an xdr.ScVal in v12 (no need for fromXDR)
+  const scv = result;
+  const switchName = scv.switch().name;
+
+  if (switchName === "scvVoid") return null;
+
+  if (switchName === "scvI128") {
+    const lo = BigInt(scv.i128().lo().low >>> 0) +
+               BigInt(scv.i128().lo().high >>> 0) * 0x100000000n;
+    const hi = BigInt(scv.i128().hi().low >>> 0) +
+               BigInt(scv.i128().hi().high >>> 0) * 0x100000000n;
+    return lo + (hi << 64n);
   }
+
   return scv;
 }
 
@@ -95,10 +113,13 @@ async function invoke(contractId, method, args = []) {
     .build();
 
   const sim = await server.simulateTransaction(tx);
-  if (Api.isSimulationError(sim)) {
+
+  // ✅ SorobanRpc.Api is the correct namespace in v12
+  if (SorobanRpc.Api.isSimulationError(sim)) {
     throw new Error(`Simulate ${method} failed: ${JSON.stringify(sim)}`);
   }
 
+  // ✅ assembleTransaction imported directly from top-level
   tx = assembleTransaction(tx, sim).build();
   tx.sign(admin);
 
@@ -107,18 +128,19 @@ async function invoke(contractId, method, args = []) {
     throw new Error(`Send ${method} failed: ${JSON.stringify(send)}`);
   }
 
-  const getResult = await server.getTransaction(send.hash);
+  // Poll for result
   const maxWait = 60;
   let waited = 0;
-  while (getResult.status === "NOT_FOUND" && waited < maxWait) {
+  while (waited < maxWait) {
     await new Promise((r) => setTimeout(r, 2000));
     const r = await server.getTransaction(send.hash);
     if (r.status === "SUCCESS") return { hash: send.hash, status: "SUCCESS" };
-    if (r.status === "FAILED") throw new Error(`Tx failed: ${JSON.stringify(r)}`);
+    if (r.status === "FAILED")
+      throw new Error(`Tx failed: ${JSON.stringify(r)}`);
     waited += 2;
   }
 
-  return { hash: send.hash, status: getResult.status };
+  return { hash: send.hash, status: "TIMEOUT" };
 }
 
 /**
