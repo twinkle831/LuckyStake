@@ -14,14 +14,14 @@
 //! SuppliedToBlend = principal supplied (excludes accrued interest). Actual balance from Blend get_positions.
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, log, token, Address, Env, IntoVal, Symbol, Val, Vec,
+    contract, contractimpl, contracttype, token, Address, Env, IntoVal, Symbol, Val, Vec,
 };
 
 #[contracttype]
 pub enum DataKey {
     Admin,
     Token,
-    PeriodDays,      // 7, 15, or 30
+    PeriodDays,
     Balance(Address),
     Tickets(Address),
     TotalDeposits,
@@ -29,13 +29,10 @@ pub enum DataKey {
     PrizeFund,
     Depositors,
     DrawNonce,
-    /// Blend lending pool contract address (optional)
     BlendPool,
-    /// Principal amount supplied to Blend (excludes accrued interest; actual balance from Blend get_positions)
     SuppliedToBlend,
 }
 
-/// Request type for Blend pool submit(). Deposit=0, Withdraw=1, SupplyCollateral=2, WithdrawCollateral=3.
 #[contracttype]
 pub struct BlendRequest {
     pub request_type: u32,
@@ -48,16 +45,15 @@ pub struct LuckyStakePool;
 
 #[contractimpl]
 impl LuckyStakePool {
-    /// Initialize the pool. Call with period_days = 7 (weekly), 15 (biweekly), or 30 (monthly).
     pub fn initialize(env: Env, admin: Address, token: Address, period_days: u32) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialised");
+            panic!("init");
         }
         admin.require_auth();
 
         assert!(
             period_days == 7 || period_days == 15 || period_days == 30,
-            "period_days must be 7, 15, or 30"
+            "period"
         );
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -70,14 +66,11 @@ impl LuckyStakePool {
 
         let empty: Vec<Address> = Vec::new(&env);
         env.storage().instance().set(&DataKey::Depositors, &empty);
-
-        log!(&env, "Pool initialized: period_days={}", period_days);
     }
 
-    /// User deposits tokens. Tickets = amount * period_days (1 ticket per $1 per day).
     pub fn deposit(env: Env, depositor: Address, amount: i128) {
         depositor.require_auth();
-        assert!(amount > 0, "deposit amount must be greater than zero");
+        assert!(amount > 0, "amt");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let token_client = token::Client::new(&env, &token_id);
@@ -135,28 +128,18 @@ impl LuckyStakePool {
             depositors.push_back(depositor.clone());
             env.storage().instance().set(&DataKey::Depositors, &depositors);
         }
-
-        log!(
-            &env,
-            "Deposit: {} deposited {} | balance: {} | tickets: {}",
-            depositor,
-            amount,
-            new_balance,
-            new_tickets
-        );
     }
 
-    /// User withdraws tokens. Tickets and balance decrease proportionally.
     pub fn withdraw(env: Env, depositor: Address, amount: i128) {
         depositor.require_auth();
-        assert!(amount > 0, "withdraw amount must be greater than zero");
+        assert!(amount > 0, "amt");
 
         let balance: i128 = env
             .storage()
             .instance()
             .get(&DataKey::Balance(depositor.clone()))
             .unwrap_or(0);
-        assert!(balance >= amount, "insufficient balance");
+        assert!(balance >= amount, "bal");
 
         let tickets: i128 = env
             .storage()
@@ -196,22 +179,12 @@ impl LuckyStakePool {
             &depositor,
             &amount,
         );
-
-        log!(
-            &env,
-            "Withdraw: {} withdrew {} | remaining balance: {} | tickets: {}",
-            depositor,
-            amount,
-            new_balance,
-            new_tickets
-        );
     }
 
-    /// Admin injects yield into the prize fund.
     pub fn add_prize(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(amount > 0, "prize amount must be greater than zero");
+        assert!(amount > 0, "amt");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token_id).transfer(
@@ -224,32 +197,21 @@ impl LuckyStakePool {
         env.storage()
             .instance()
             .set(&DataKey::PrizeFund, &(current + amount));
-
-        log!(&env, "Prize fund topped up: {} | total: {}", amount, current + amount);
     }
 
-    /// Execute draw: select one random winner by ticket weight, transfer prize.
-    ///
-    /// Randomness source: Stellar's native PRNG (env.prng().gen::<u64>()) which is
-    /// backed by the protocol-level VRF introduced in Protocol 20. Each ledger has a
-    /// unique random seed that cannot be predicted or manipulated by validators,
-    /// making this cryptographically secure and fully verifiable on-chain.
-    ///
-    /// The winning ticket index is: random_u64 % total_tickets
-    /// Winner is found by iterating participants until cumulative tickets exceed the index.
     pub fn execute_draw(env: Env) -> Address {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
 
         let prize: i128 = env.storage().instance().get(&DataKey::PrizeFund).unwrap_or(0);
-        assert!(prize > 0, "no prize to distribute");
+        assert!(prize > 0, "prize");
 
         let total_tickets: i128 = env
             .storage()
             .instance()
             .get(&DataKey::TotalTickets)
             .unwrap_or(0);
-        assert!(total_tickets > 0, "no tickets in pool");
+        assert!(total_tickets > 0, "tickets");
 
         let depositors: Vec<Address> = env
             .storage()
@@ -257,7 +219,6 @@ impl LuckyStakePool {
             .get(&DataKey::Depositors)
             .unwrap_or_else(|| Vec::new(&env));
 
-        // Build participant list with tickets > 0
         let mut participants: Vec<(Address, i128)> = Vec::new(&env);
         let mut acc: i128 = 0;
         for d in depositors.iter() {
@@ -271,20 +232,11 @@ impl LuckyStakePool {
                 participants.push_back((d.clone(), t));
             }
         }
-        assert!(acc > 0, "no participants with tickets");
+        assert!(acc > 0, "none");
 
-        // ─────────────────────────────────────────────────────────────────
-        // Randomness: Stellar native PRNG (Protocol 20+)
-        //
-        // env.prng().gen::<u64>() draws from the ledger's VRF-backed seed.
-        // The seed is determined by the consensus round and cannot be known
-        // or influenced by any single validator or the contract admin.
-        // This replaces the old timestamp+sequence approach which was predictable.
-        // ─────────────────────────────────────────────────────────────────
         let random: u64 = env.prng().gen();
         let winning_ticket_index = (random as i128) % acc;
 
-        // Find winner: iterate until cumulative tickets exceed winning index
         let mut cumulative: i128 = 0;
         let mut winner = participants.get(0).unwrap().0.clone();
         for p in participants.iter() {
@@ -295,7 +247,6 @@ impl LuckyStakePool {
             }
         }
 
-        // Transfer prize to winner
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token_id).transfer(
             &env.current_contract_address(),
@@ -303,7 +254,6 @@ impl LuckyStakePool {
             &prize,
         );
 
-        // Reset prize fund and increment nonce
         env.storage().instance().set(&DataKey::PrizeFund, &0i128);
 
         let nonce: u64 = env
@@ -313,21 +263,8 @@ impl LuckyStakePool {
             .unwrap_or(0);
         env.storage().instance().set(&DataKey::DrawNonce, &(nonce + 1));
 
-        log!(
-            &env,
-            "Draw executed: winner={} | prize={} | winning_ticket_index={} | nonce={}",
-            winner,
-            prize,
-            winning_ticket_index,
-            nonce + 1
-        );
-
         winner
     }
-
-    // ──────────────────────────────────────────
-    //  Read helpers
-    // ──────────────────────────────────────────
 
     pub fn get_balance(env: Env, user: Address) -> i128 {
         env.storage().instance().get(&DataKey::Balance(user)).unwrap_or(0)
@@ -365,10 +302,6 @@ impl LuckyStakePool {
         env.storage().instance().get(&DataKey::DrawNonce).unwrap_or(0)
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    //  Blend integration
-    // ─────────────────────────────────────────────────────────────────────
-
     pub fn set_blend_pool(env: Env, blend_pool: Address) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
@@ -376,21 +309,18 @@ impl LuckyStakePool {
         if !env.storage().instance().has(&DataKey::SuppliedToBlend) {
             env.storage().instance().set(&DataKey::SuppliedToBlend, &0i128);
         }
-        log!(&env, "Blend pool set: {}", blend_pool);
     }
 
-    /// Supply token from pool to Blend lending pool (admin only).
-    /// request_type=0 (Deposit). Uses Val return type to handle Blend's positions struct response.
     pub fn supply_to_blend(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(amount > 0, "amount must be positive");
+        assert!(amount > 0, "amt");
 
         let blend_pool: Address = env
             .storage()
             .instance()
             .get(&DataKey::BlendPool)
-            .unwrap_or_else(|| panic!("Blend pool not set"));
+            .unwrap_or_else(|| panic!("blend"));
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let self_addr = env.current_contract_address();
 
@@ -413,7 +343,6 @@ impl LuckyStakePool {
             requests.into_val(&env),
         ];
 
-        // Val return type: Blend returns a positions struct, not void
         env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit_with_allowance"), args);
 
         let supplied: i128 = env
@@ -424,17 +353,13 @@ impl LuckyStakePool {
         env.storage()
             .instance()
             .set(&DataKey::SuppliedToBlend, &(supplied + amount));
-
-        log!(&env, "Supplied to Blend: {} | total supplied: {}", amount, supplied + amount);
     }
 
-    /// Withdraw token from Blend back to the pool (admin only).
-    /// request_type=1 (Withdraw). min_return guards against slippage/bugs.
     pub fn withdraw_from_blend(env: Env, amount: i128, min_return: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(amount > 0, "amount must be positive");
-        assert!(min_return >= 0 && min_return <= amount, "min_return must be in [0, amount]");
+        assert!(amount > 0, "amt");
+        assert!(min_return >= 0 && min_return <= amount, "min");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let self_addr = env.current_contract_address();
@@ -444,7 +369,7 @@ impl LuckyStakePool {
             .storage()
             .instance()
             .get(&DataKey::BlendPool)
-            .unwrap_or_else(|| panic!("Blend pool not set"));
+            .unwrap_or_else(|| panic!("blend"));
 
         let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(BlendRequest {
@@ -461,12 +386,11 @@ impl LuckyStakePool {
             requests.into_val(&env),
         ];
 
-        // Val return type: Blend returns a positions struct, not void
         env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit"), args);
 
         let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
         let received = balance_after - balance_before;
-        assert!(received >= min_return, "received {} < min_return {}", received, min_return);
+        assert!(received >= min_return, "slip");
 
         let supplied: i128 = env
             .storage()
@@ -477,18 +401,13 @@ impl LuckyStakePool {
         env.storage()
             .instance()
             .set(&DataKey::SuppliedToBlend, &new_supplied);
-
-        log!(&env, "Withdrew from Blend: received {} | remaining supplied: {}", received, new_supplied);
     }
 
-    /// Harvest accrued yield from Blend into PrizeFund (admin only).
-    /// Compute yield off-chain: yield = get_positions(contract).supply - get_supplied_to_blend().
-    /// request_type=1 (Withdraw) for yield-only portion. SuppliedToBlend (principal) unchanged.
     pub fn harvest_yield(env: Env, amount: i128, min_return: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(amount > 0, "amount must be positive");
-        assert!(min_return >= 0 && min_return <= amount, "min_return must be in [0, amount]");
+        assert!(amount > 0, "amt");
+        assert!(min_return >= 0 && min_return <= amount, "min");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let self_addr = env.current_contract_address();
@@ -498,7 +417,7 @@ impl LuckyStakePool {
             .storage()
             .instance()
             .get(&DataKey::BlendPool)
-            .unwrap_or_else(|| panic!("Blend pool not set"));
+            .unwrap_or_else(|| panic!("blend"));
 
         let mut requests: Vec<BlendRequest> = Vec::new(&env);
         requests.push_back(BlendRequest {
@@ -515,27 +434,22 @@ impl LuckyStakePool {
             requests.into_val(&env),
         ];
 
-        // Val return type: Blend returns a positions struct, not void
         env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit"), args);
 
         let balance_after = token::Client::new(&env, &token_id).balance(&self_addr);
         let received = balance_after - balance_before;
-        assert!(received >= min_return, "received {} < min_return {}", received, min_return);
+        assert!(received >= min_return, "slip");
 
         let prize: i128 = env.storage().instance().get(&DataKey::PrizeFund).unwrap_or(0);
         env.storage()
             .instance()
             .set(&DataKey::PrizeFund, &(prize + received));
-
-        log!(&env, "Harvested yield: {} -> PrizeFund (total: {})", received, prize + received);
     }
 
     pub fn get_blend_pool(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::BlendPool)
     }
 
-    /// Principal amount supplied to Blend (excludes accrued interest).
-    /// Query Blend get_positions for actual withdrawable balance.
     pub fn get_supplied_to_blend(env: Env) -> i128 {
         env.storage()
             .instance()
