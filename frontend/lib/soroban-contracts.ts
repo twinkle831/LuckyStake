@@ -70,7 +70,9 @@ export async function buildDepositInvocation(
   const contractAddress = getContractAddress(poolId);
   const scaledAmount = scaleAmount(amount);
 
-  const server = new StellarSdk.SorobanRpc.Server(RPC_URL, {
+  // FIX: use StellarSdk.rpc.Server instead of StellarSdk.SorobanRpc.Server
+  // SorobanRpc was renamed to rpc in newer versions of the SDK
+  const server = new StellarSdk.rpc.Server(RPC_URL, {
     allowHttp: RPC_URL.startsWith("http://"),
   });
 
@@ -108,12 +110,10 @@ export async function buildDepositInvocation(
     throw new Error(`Simulation failed: ${(simResponse as any).error}`);
   }
 
-  // assembleTransaction: try SorobanRpc namespace first, then /rpc subpath
+  // FIX: assembleTransaction: try StellarSdk.rpc first, then /rpc subpath
   let assembleTransaction: Function;
-  if (
-    typeof (StellarSdk.SorobanRpc as any).assembleTransaction === "function"
-  ) {
-    assembleTransaction = (StellarSdk.SorobanRpc as any).assembleTransaction;
+  if (typeof (StellarSdk.rpc as any).assembleTransaction === "function") {
+    assembleTransaction = (StellarSdk.rpc as any).assembleTransaction;
   } else {
     const rpc = await import("@stellar/stellar-sdk/rpc");
     assembleTransaction = (rpc as any).assembleTransaction;

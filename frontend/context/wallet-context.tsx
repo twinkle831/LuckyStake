@@ -28,6 +28,7 @@ interface WalletContextType extends WalletState {
   connect: () => Promise<void>
   disconnect: () => void
   setConnection: (conn: WalletConnection) => Promise<void>
+  refreshBalance: () => Promise<void>
   token: string | null
 }
 
@@ -100,9 +101,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const data = await res.json()
         xlmBalance = data.xlmBalance != null
           ? Number(data.xlmBalance).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 7,
-            })
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 7,
+          })
           : "0"
       }
     } catch { /* backend not running */ }
@@ -134,6 +135,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     console.warn("[WalletContext] connect() called directly — open <ConnectWalletModal> instead")
   }, [])
 
+  const refreshBalance = useCallback(async () => {
+    const addr = wallet.address
+    if (!addr) return
+    try {
+      const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+      const res = await fetch(`${API}/api/wallet/${addr}`)
+      if (res.ok) {
+        const data = await res.json()
+        const xlmBalance = data.xlmBalance != null
+          ? Number(data.xlmBalance).toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 7,
+          })
+          : "0"
+        setWallet((prev) => ({ ...prev, balance: xlmBalance }))
+      }
+    } catch { /* ignore */ }
+  }, [wallet.address])
+
   const disconnect = useCallback(() => {
     setWallet(DEFAULT)
     setToken(null)
@@ -141,7 +161,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <WalletContext.Provider value={{ ...wallet, token, connect, disconnect, setConnection }}>
+    <WalletContext.Provider value={{ ...wallet, token, connect, disconnect, setConnection, refreshBalance }}>
       {children}
     </WalletContext.Provider>
   )

@@ -85,9 +85,9 @@ async function simulateRead(contractId, method, args = []) {
 
   if (switchName === "scvI128") {
     const lo = BigInt(scv.i128().lo().low >>> 0) +
-               BigInt(scv.i128().lo().high >>> 0) * 0x100000000n;
+      BigInt(scv.i128().lo().high >>> 0) * 0x100000000n;
     const hi = BigInt(scv.i128().hi().low >>> 0) +
-               BigInt(scv.i128().hi().high >>> 0) * 0x100000000n;
+      BigInt(scv.i128().hi().high >>> 0) * 0x100000000n;
     return lo + (hi << 64n);
   }
 
@@ -184,6 +184,7 @@ function getContractId(poolType) {
 
 module.exports = {
   getServer,
+  simulateRead,
   getSuppliedToBlend,
   getPrizeFund,
   harvestYield,

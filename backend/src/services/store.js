@@ -10,7 +10,8 @@ const store = {
   // challenges[nonce] = { publicKey, nonce, createdAt, used }
   challenges: new Map(),
 
-  // deposits[id] = { id, publicKey, poolType, amount, txHash, depositedAt, withdrawnAt, withdrawnAmount, ticketsRemaining }
+  // deposits[id] = { id, publicKey, poolType, amount, txHash, depositedAt, tickets,
+  //                  withdrawnAt, payoutTxHash, payoutAt, payoutType: "win"|"refund" }
   deposits: new Map(),
 
   // pools[type] = { type, totalDeposited, yieldAccrued, participants, nextDraw, suppliedToBlend }
@@ -18,6 +19,10 @@ const store = {
 
   // prizes[id] = { id, winner, amount, poolType, drawnAt, txHash }
   prizes: new Map(),
+
+  // draws[id] = { id, poolType, winner, prizeAmount, participants, totalTickets,
+  //              drawnAt, payoutStatus: "pending"|"complete"|"partial"|"failed", txHashes }
+  draws: new Map(),
 };
 
 function drawClock() {
@@ -113,6 +118,7 @@ function persist() {
     deposits: Object.fromEntries(store.deposits),
     pools: Object.fromEntries(store.pools),
     prizes: Object.fromEntries(store.prizes),
+    draws: Object.fromEntries(store.draws),
   };
   fs.writeFileSync(DB_FILE, JSON.stringify(serializable, null, 2), "utf8");
 }
@@ -131,12 +137,14 @@ function load() {
     store.deposits = new Map(Object.entries(raw.deposits || {}));
     store.pools = new Map(Object.entries(raw.pools || {}));
     store.prizes = new Map(Object.entries(raw.prizes || {}));
+    store.draws = new Map(Object.entries(raw.draws || {}));
   } catch {
     store.users = new Map();
     store.challenges = new Map();
     store.deposits = new Map();
     store.pools = defaultPools();
     store.prizes = new Map();
+    store.draws = new Map();
     persist();
   }
 

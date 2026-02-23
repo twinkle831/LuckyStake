@@ -1,0 +1,146 @@
+{
+  "users": {
+    "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD": {
+      "publicKey": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "joinedAt": "2026-02-23T06:24:17.858Z",
+      "totalDeposited": 26,
+      "tickets": 182,
+      "lastLogin": "2026-02-23T09:22:58.003Z"
+    }
+  },
+  "challenges": {},
+  "deposits": {
+    "dcf5fafa-b3d5-4b7b-af15-2564ec77fdb9": {
+      "id": "dcf5fafa-b3d5-4b7b-af15-2564ec77fdb9",
+      "publicKey": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "poolType": "weekly",
+      "amount": 1,
+      "txHash": "807eefc4017cc7f9002806019e703c8393326176d54da3f0154f4571572e5257",
+      "tickets": 7,
+      "depositedAt": "2026-02-23T07:59:05.000Z",
+      "withdrawnAt": null,
+      "ledger": 1166924
+    },
+    "5da461c1-403b-4d73-8745-6f9f3d42e783": {
+      "id": "5da461c1-403b-4d73-8745-6f9f3d42e783",
+      "publicKey": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "poolType": "weekly",
+      "amount": 10,
+      "txHash": "b9524a5995a34f02dea749e3d1da9ce20bb946151d9fda32ce7b0d9ba5b87a90",
+      "tickets": 70,
+      "depositedAt": "2026-02-23T08:43:38.000Z",
+      "withdrawnAt": null,
+      "ledger": 1167458
+    },
+    "db9354a3-2a88-48c7-af74-858b36ce2318": {
+      "id": "db9354a3-2a88-48c7-af74-858b36ce2318",
+      "publicKey": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "poolType": "weekly",
+      "amount": 10,
+      "txHash": "13e6c82248c3795aa1cd28879ec52029acdf4ed382fdc413bc86567a4cae1c19",
+      "tickets": 70,
+      "depositedAt": "2026-02-23T08:57:39.000Z",
+      "withdrawnAt": null,
+      "ledger": 1167626
+    },
+    "faae94bf-6db3-49cb-bf7f-999287fee398": {
+      "id": "faae94bf-6db3-49cb-bf7f-999287fee398",
+      "publicKey": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "poolType": "weekly",
+      "amount": 5,
+      "txHash": "47d90fe61d8ef70c2b541a4aed1df95507ed96561b10842fd1bc4cd395da45bd",
+      "tickets": 35,
+      "depositedAt": "2026-02-23T09:23:16.000Z",
+      "withdrawnAt": null,
+      "ledger": 1167933
+    }
+  },
+  "pools": {
+    "weekly": {
+      "type": "weekly",
+      "totalDeposited": 26,
+      "yieldAccrued": 0,
+      "participants": 1,
+      "nextDraw": "2026-03-02T12:30:00.000Z",
+      "prizeHistory": [
+        {
+          "amount": 0.000137,
+          "winner": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+          "drawnAt": "2026-02-23T08:01:13.765Z"
+        },
+        {
+          "amount": 0,
+          "winner": null,
+          "drawnAt": "2026-02-23T08:44:05.293Z"
+        }
+      ],
+      "suppliedToBlend": 0
+    },
+    "biweekly": {
+      "type": "biweekly",
+      "totalDeposited": 0,
+      "yieldAccrued": 0,
+      "participants": 0,
+      "nextDraw": "2026-03-05T12:30:00.000Z",
+      "prizeHistory": [],
+      "suppliedToBlend": 0
+    },
+    "monthly": {
+      "type": "monthly",
+      "totalDeposited": 0,
+      "yieldAccrued": 0,
+      "participants": 0,
+      "nextDraw": "2026-03-01T12:30:00.000Z",
+      "prizeHistory": [],
+      "suppliedToBlend": 0
+    }
+  },
+  "prizes": {
+    "19910af0-d0cf-431e-be81-32960961f7cb": {
+      "id": "19910af0-d0cf-431e-be81-32960961f7cb",
+      "winner": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "amount": 0.000137,
+      "poolType": "weekly",
+      "drawnAt": "2026-02-23T08:01:13.765Z",
+      "txHash": null,
+      "participants": 1,
+      "totalTickets": 7
+    },
+    "c998baba-8eb5-4e73-ac34-41e0cfec12ab": {
+      "id": "c998baba-8eb5-4e73-ac34-41e0cfec12ab",
+      "winner": null,
+      "amount": 0,
+      "poolType": "weekly",
+      "drawnAt": "2026-02-23T08:44:05.293Z",
+      "txHash": null,
+      "participants": 2,
+      "totalTickets": 77
+    }
+  },
+  "draws": {
+    "ba356937-21e9-4250-8ff3-d4ff4855f7b2": {
+      "id": "ba356937-21e9-4250-8ff3-d4ff4855f7b2",
+      "poolType": "weekly",
+      "winner": "GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD",
+      "prizeAmount": 0.000137,
+      "participants": 1,
+      "totalTickets": 7,
+      "drawnAt": "2026-02-23T08:01:13.765Z",
+      "contractTxHash": null,
+      "payoutStatus": "pending",
+      "txHashes": []
+    },
+    "d2f396ad-894f-429e-be1d-cdd8a6ca5669": {
+      "id": "d2f396ad-894f-429e-be1d-cdd8a6ca5669",
+      "poolType": "weekly",
+      "winner": null,
+      "prizeAmount": 0,
+      "participants": 2,
+      "totalTickets": 77,
+      "drawnAt": "2026-02-23T08:44:05.293Z",
+      "contractTxHash": null,
+      "payoutStatus": "pending",
+      "txHashes": []
+    }
+  }
+}

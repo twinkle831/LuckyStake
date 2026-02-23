@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useSyncExternalStore } from "react"
+import { useState, useEffect, useSyncExternalStore, useRef } from "react"
 import {
   Wallet,
   Ticket,
@@ -16,6 +16,9 @@ import {
   ArrowDownRight,
   Sparkles,
   Filter,
+  Trophy,
+  RotateCcw,
+  AlertCircle,
 } from "lucide-react"
 import { useWallet, truncateAddress } from "@/context/wallet-context"
 import {
@@ -28,27 +31,62 @@ import {
   getTotalClaimed,
   getPoolBalance,
   getAccruedInterest,
+  addPayout,
   type DepositEntry,
 } from "@/lib/deposit-store"
 import { pools, formatCountdown, type Pool } from "@/lib/pool-data"
 import { stellarExpertTxUrl, isStellarTxHash } from "@/lib/stellar-explorer"
+import { useMyResults } from "@/hooks/use-my-results"
+import type { MyResultsData } from "@/hooks/use-my-results"
+import { useTransactionHistory } from "@/hooks/use-transaction-history"
 
 function useDeposits() {
   return useSyncExternalStore(subscribe, getDeposits, getDeposits)
 }
 
-type TxFilter = "all" | "deposit" | "withdraw" | "claim"
+type TxFilter = "all" | "deposit" | "withdraw" | "claim" | "payout"
 
 interface Props {
   onWithdraw?: (pool: Pool) => void
 }
 
 export function UserDashboard({ onWithdraw }: Props) {
-  const { address, balance, network, disconnect } = useWallet()
+  const { address, balance, network, disconnect, refreshBalance } = useWallet()
   const deposits = useDeposits()
   const [copied, setCopied] = useState(false)
   const [countdowns, setCountdowns] = useState<Record<string, string>>({})
   const [txFilter, setTxFilter] = useState<TxFilter>("all")
+  const { data: myResults, loading: resultsLoading } = useMyResults(30_000)
+
+  // Hydrate in-memory deposit-store from backend on every login (persists across refresh)
+  useTransactionHistory(address)
+
+  // Track which draw IDs we've already processed so we don't re-add payouts
+  const processedDrawIds = useRef<Set<string>>(new Set())
+
+  // When new results arrive, inject them into the local deposit-store and refresh balance
+  useEffect(() => {
+    // Won draws
+    for (const draw of myResults.won) {
+      if (!processedDrawIds.current.has(`win-${draw.id}`)) {
+        processedDrawIds.current.add(`win-${draw.id}`)
+        const poolName =
+          draw.poolType.charAt(0).toUpperCase() + draw.poolType.slice(1) + " Pool"
+        addPayout(draw.poolType, poolName, draw.prizeAmount, "win", draw.txHashes[0])
+        refreshBalance()
+      }
+    }
+
+    // Refund payouts — deduplicate by deposit id
+    for (const dep of myResults.payouts) {
+      if (dep.payoutType === "refund" && !processedDrawIds.current.has(`refund-${dep.id}`)) {
+        processedDrawIds.current.add(`refund-${dep.id}`)
+        const poolName =
+          dep.poolType.charAt(0).toUpperCase() + dep.poolType.slice(1) + " Pool"
+        addPayout(dep.poolType, poolName, dep.amount, "refund", dep.payoutTxHash ?? undefined)
+      }
+    }
+  }, [myResults, refreshBalance])
 
   useEffect(() => {
     function tick() {
@@ -117,13 +155,23 @@ export function UserDashboard({ onWithdraw }: Props) {
               <p className="text-xs text-muted-foreground">{network}</p>
             </div>
           </div>
-          <button
-            onClick={disconnect}
-            className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            Disconnect
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => refreshBalance()}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              aria-label="Refresh balance"
+              title="Refresh balance"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={disconnect}
+              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Disconnect
+            </button>
+          </div>
         </div>
       </div>
 
@@ -157,6 +205,9 @@ export function UserDashboard({ onWithdraw }: Props) {
           sublabel={nextDraw.name}
         />
       </div>
+
+      {/* My Results section */}
+      <MyResultsSection results={myResults} loading={resultsLoading} />
 
       {/* Your Pools breakdown */}
       {userPools.length > 0 && (
@@ -234,16 +285,15 @@ export function UserDashboard({ onWithdraw }: Props) {
           <div className="flex items-center gap-2">
             <Filter className="h-3.5 w-3.5 text-muted-foreground" />
             <div className="flex items-center gap-1 rounded-lg bg-secondary/50 p-0.5">
-              {(["all", "deposit", "withdraw", "claim"] as TxFilter[]).map(
+              {(["all", "deposit", "withdraw", "claim", "payout"] as TxFilter[]).map(
                 (key) => (
                   <button
                     key={key}
                     onClick={() => setTxFilter(key)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
-                      txFilter === key
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${txFilter === key
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                      }`}
                   >
                     {key.charAt(0).toUpperCase() + key.slice(1)}
                   </button>
@@ -273,6 +323,152 @@ export function UserDashboard({ onWithdraw }: Props) {
     </div>
   )
 }
+
+// ── My Results Section ───────────────────────────────────────────────────────
+
+function MyResultsSection({
+  results,
+  loading,
+}: {
+  results: MyResultsData
+  loading: boolean
+}) {
+  // Only show wins that had an actual prize (prizeAmount > 0)
+  const realWins = results.won.filter((d) => d.prizeAmount > 0)
+  const refunds = results.payouts.filter((p) => p.payoutType === "refund")
+  const hasContent = realWins.length > 0 || refunds.length > 0
+
+  if (loading && !hasContent) {
+    return (
+      <div className="rounded-2xl border border-border bg-card/50 p-6 backdrop-blur-sm animate-pulse">
+        <div className="h-4 w-32 rounded bg-secondary/60 mb-4" />
+        <div className="h-16 rounded bg-secondary/30" />
+      </div>
+    )
+  }
+
+  if (!hasContent) return null
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/50 backdrop-blur-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
+        <Trophy className="h-4 w-4 text-yellow-400" />
+        <h3 className="font-display text-sm font-bold text-foreground">My Draw Results</h3>
+        {results.winCount > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-yellow-400/10 px-2 py-0.5 text-xs font-medium text-yellow-400">
+            🏆 {results.winCount} {results.winCount === 1 ? "Win" : "Wins"}
+          </span>
+        )}
+      </div>
+
+      <div className="divide-y divide-border/50">
+        {/* Won draws — only shown when prizeAmount > 0 */}
+        {realWins.map((draw) => (
+          <div
+            key={draw.id}
+            className="group flex items-center justify-between px-6 py-4 transition-colors hover:bg-secondary/20"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-400/10">
+                <Trophy className="h-4 w-4 text-yellow-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    +{draw.prizeAmount.toLocaleString()} XLM
+                  </p>
+                  <span className="inline-flex items-center rounded-full bg-yellow-400/10 px-2 py-0.5 text-xs text-yellow-400">
+                    🎉 You Won!
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground capitalize">{draw.poolType} Pool</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">{getTimeAgo(new Date(draw.drawnAt))}</p>
+                <p className="text-xs text-muted-foreground capitalize">{draw.payoutStatus}</p>
+              </div>
+              {draw.txHashes[0] && isStellarTxHash(draw.txHashes[0]) && (
+                <a
+                  href={stellarExpertTxUrl(draw.txHashes[0])}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent"
+                  aria-label="View on Stellar Expert"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Refunds */}
+        {refunds.map((dep) => (
+          <div
+            key={dep.id}
+            className="group flex items-center justify-between px-6 py-4 transition-colors hover:bg-secondary/20"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-400/10">
+                <RotateCcw className="h-4 w-4 text-blue-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">
+                    +{dep.amount.toLocaleString()} XLM
+                  </p>
+                  <span className="inline-flex items-center rounded-full bg-blue-400/10 px-2 py-0.5 text-xs text-blue-400">
+                    Principal Returned
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground capitalize">{dep.poolType} Pool</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">{getTimeAgo(new Date(dep.payoutAt))}</p>
+              </div>
+              {dep.payoutTxHash && isStellarTxHash(dep.payoutTxHash) && (
+                <a
+                  href={stellarExpertTxUrl(dep.payoutTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent"
+                  aria-label="View on Stellar Expert"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Summary row */}
+        {(results.totalWon > 0 || results.totalRefunded > 0) && (
+          <div className="flex items-center justify-between px-6 py-3 bg-secondary/10">
+            <span className="text-xs text-muted-foreground">Lifetime payout summary</span>
+            <div className="flex gap-4 text-xs">
+              {results.totalWon > 0 && (
+                <span className="text-yellow-400 font-medium">
+                  Won: {results.totalWon.toLocaleString()} XLM
+                </span>
+              )}
+              {results.totalRefunded > 0 && (
+                <span className="text-blue-400 font-medium">
+                  Refunded: {results.totalRefunded.toLocaleString()} XLM
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Sub-components ───────────────────────────────────────────────────────────
 
 function StatCard({
   icon,
@@ -308,7 +504,7 @@ function StatCard({
 function TransactionRow({ entry }: { entry: DepositEntry }) {
   const timeAgo = getTimeAgo(entry.timestamp)
 
-  const typeConfig = {
+  const typeConfig: Record<string, { icon: React.ReactNode; badge: string; label: string; sign: string }> = {
     deposit: {
       icon: <ArrowDownRight className="h-4 w-4 text-accent" />,
       badge: "bg-accent/10 text-accent",
@@ -327,9 +523,23 @@ function TransactionRow({ entry }: { entry: DepositEntry }) {
       label: "Claim",
       sign: "+",
     },
+    payout: {
+      icon:
+        entry.payoutSubtype === "win" ? (
+          <Trophy className="h-4 w-4 text-yellow-400" />
+        ) : (
+          <RotateCcw className="h-4 w-4 text-blue-400" />
+        ),
+      badge:
+        entry.payoutSubtype === "win"
+          ? "bg-yellow-400/10 text-yellow-400"
+          : "bg-blue-400/10 text-blue-400",
+      label: entry.payoutSubtype === "win" ? "Prize 🎉" : "Refund",
+      sign: "+",
+    },
   }
 
-  const cfg = typeConfig[entry.type]
+  const cfg = typeConfig[entry.type] ?? typeConfig.deposit
 
   return (
     <div className="group flex items-center justify-between px-6 py-4 transition-colors hover:bg-secondary/20">
@@ -340,7 +550,7 @@ function TransactionRow({ entry }: { entry: DepositEntry }) {
         <div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold text-foreground">
-              {cfg.sign}{entry.amount.toLocaleString()} XLM
+              {cfg.sign}{(entry.amount ?? 0).toLocaleString()} XLM
             </p>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${cfg.badge}`}
@@ -355,7 +565,7 @@ function TransactionRow({ entry }: { entry: DepositEntry }) {
         <div className="text-right">
           {entry.type === "deposit" && (
             <p className="text-sm font-semibold text-foreground">
-              {entry.tickets.toLocaleString()} tickets
+              {(entry.tickets ?? 0).toLocaleString()} tickets
             </p>
           )}
           <p className="text-xs text-muted-foreground">{timeAgo}</p>

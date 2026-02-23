@@ -100,8 +100,8 @@ importers:
         specifier: ^6.0.1
         version: 6.0.1
       '@stellar/stellar-sdk':
-        specifier: ^12.3.0
-        version: 12.3.0
+        specifier: ^14.5.0
+        version: 14.5.0
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.24(postcss@8.5.6)
@@ -424,6 +424,14 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@noble/curves@1.9.7':
+    resolution: {integrity: sha512-gbKGcRUYIjA3/zCCNaWDciTMFI0dCkvou3TL8Zmy5Nc7sJ47a0jtOeZoTaMxkuqRo9cRhjOdZJXegxYE5FN/xw==}
+    engines: {node: ^14.21.3 || >=16}
+
+  '@noble/hashes@1.8.0':
+    resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}
+    engines: {node: ^14.21.3 || >=16}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1243,11 +1251,14 @@ packages:
   '@stellar/js-xdr@3.1.2':
     resolution: {integrity: sha512-VVolPL5goVEIsvuGqDc5uiKxV03lzfWdvYg1KikvwheDmTBO68CKDji3bAZ/kppZrx5iTA8z3Ld5yuytcvhvOQ==}
 
-  '@stellar/stellar-base@12.1.1':
-    resolution: {integrity: sha512-gOBSOFDepihslcInlqnxKZdIW9dMUO1tpOm3AtJR33K2OvpXG6SaVHCzAmCFArcCqI9zXTEiSoh70T48TmiHJA==}
+  '@stellar/stellar-base@14.0.4':
+    resolution: {integrity: sha512-UbNW6zbdOBXJwLAV2mMak0bIC9nw3IZVlQXkv2w2dk1jgCbJjy3oRVC943zeGE5JAm0Z9PHxrIjmkpGhayY7kw==}
+    engines: {node: '>=20.0.0'}
 
-  '@stellar/stellar-sdk@12.3.0':
-    resolution: {integrity: sha512-F2DYFop/M5ffXF0lvV5Ezjk+VWNKg0QDX8gNhwehVU3y5LYA3WAY6VcCarMGPaG9Wdgoeh1IXXzOautpqpsltw==}
+  '@stellar/stellar-sdk@14.5.0':
+    resolution: {integrity: sha512-Uzjq+An/hUA+Q5ERAYPtT0+MMiwWnYYWMwozmZMjxjdL2MmSjucBDF8Q04db6K/ekU4B5cHuOfsdlrfaxQYblw==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
 
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
@@ -1409,25 +1420,6 @@ packages:
   axios@1.13.5:
     resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
 
-  bare-addon-resolve@1.10.0:
-    resolution: {integrity: sha512-sSd0jieRJlDaODOzj0oe0RjFVC1QI0ZIjGIdPkbrTXsdVVtENg14c+lHHAhHwmWCZ2nQlMhy8jA3Y5LYPc/isA==}
-    peerDependencies:
-      bare-url: '*'
-    peerDependenciesMeta:
-      bare-url:
-        optional: true
-
-  bare-module-resolve@1.12.1:
-    resolution: {integrity: sha512-hbmAPyFpEq8FoZMd5sFO3u6MC5feluWoGE8YKlA8fCrl6mNtx68Wjg4DTiDJcqRJaovTvOYKfYngoBUnbaT7eg==}
-    peerDependencies:
-      bare-url: '*'
-    peerDependenciesMeta:
-      bare-url:
-        optional: true
-
-  bare-semver@1.0.2:
-    resolution: {integrity: sha512-ESVaN2nzWhcI5tf3Zzcq9aqCZ676VWzqw07eEZ0qxAcEOAFYBa0pWq8sK34OQeHLY3JsfKXZS9mDyzyxGjeLzA==}
-
   base32.js@0.1.0:
     resolution: {integrity: sha512-n3TkB02ixgBOhTvANakDb4xaMXnYUVkNoRFJjQflcqMQhyEKxEHdj3E6N8t8sUQ0mjH/3/JxzlXuz3ul/J90pQ==}
     engines: {node: '>=0.12.0'}
@@ -1500,6 +1492,10 @@ packages:
   combined-stream@1.0.8:
     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
     engines: {node: '>= 0.8'}
+
+  commander@14.0.3:
+    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
+    engines: {node: '>=20'}
 
   commander@4.1.1:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
@@ -1658,6 +1654,9 @@ packages:
       picomatch:
         optional: true
 
+  feaxios@0.0.23:
+    resolution: {integrity: sha512-eghR0A21fvbkcQBgZuMfQhrXxJzC0GNUGC9fXhBge33D+mFDTwl0aJ35zoQQn575BhyjQitRc5N4f+L4cP708g==}
+
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
@@ -1771,6 +1770,10 @@ packages:
   is-number@7.0.0:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
+
+  is-retry-allowed@3.0.0:
+    resolution: {integrity: sha512-9xH0xvoggby+u0uGF7cZXdrutWiBiaFG8ZT4YFPXL8NzkyAwX3AKGLeFQLvzDpM430+nDFBZ1LHkie/8ocL06A==}
+    engines: {node: '>=12'}
 
   is-typed-array@1.1.15:
     resolution: {integrity: sha512-p3EcsicXjit7SaskXHs1hA91QxgTw46Fv6EFKKGS5DRFLD8yKnohjF3hxoju94b/OcMZoQukzpPpBE9uLVKzgQ==}
@@ -2133,10 +2136,6 @@ packages:
       react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  require-addon@1.2.0:
-    resolution: {integrity: sha512-VNPDZlYgIYQwWp9jMTzljx+k0ZtatKlcvOhktZ/anNPI3dQ9NXk7cq2U4iJ1wd9IrytRnYhyEocFWbkdPb+MYA==}
-    engines: {bare: '>=1.10.0'}
-
   resolve@1.22.11:
     resolution: {integrity: sha512-RfqAvLnMl313r7c9oclB1HhUEAezcpLjz95wFH4LVuhk9JF/r22qmVP9AMmOU4vMX7Q8pN8jwNg/CSpdFnMjTQ==}
     engines: {node: '>= 0.4'}
@@ -2177,9 +2176,6 @@ packages:
   sharp@0.34.5:
     resolution: {integrity: sha512-Ou9I5Ft9WNcCbXrU9cMgPBcCK8LiwLqcbywW3t4oDV37n1pzpuNLsYiAV8eODnjbtQlSDwZ2cUEeQz4E54Hltg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
-
-  sodium-native@4.3.3:
-    resolution: {integrity: sha512-OnxSlN3uyY8D0EsLHpmm2HOFmKddQVvEMmsakCrXUzSd8kjjbzL413t4ZNF3n0UxSwNgwTyUvkmZHTfuCeiYSw==}
 
   sonner@1.7.4:
     resolution: {integrity: sha512-DIS8z4PfJRbIyfVFDVnK9rO3eYDtse4Omcm6bt0oEr5/jtLgysmjuBl1frJ9E/EQZrFmKx2A8m/s5s9CRXIzhw==}
@@ -2263,9 +2259,6 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
-
-  tweetnacl@1.0.3:
-    resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==}
 
   typed-array-buffer@1.0.3:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
@@ -2500,6 +2493,12 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@16.1.6':
     optional: true
+
+  '@noble/curves@1.9.7':
+    dependencies:
+      '@noble/hashes': 1.8.0
+
+  '@noble/hashes@1.8.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -3336,30 +3335,27 @@ snapshots:
 
   '@stellar/js-xdr@3.1.2': {}
 
-  '@stellar/stellar-base@12.1.1':
+  '@stellar/stellar-base@14.0.4':
     dependencies:
+      '@noble/curves': 1.9.7
       '@stellar/js-xdr': 3.1.2
       base32.js: 0.1.0
       bignumber.js: 9.3.1
       buffer: 6.0.3
       sha.js: 2.4.12
-      tweetnacl: 1.0.3
-    optionalDependencies:
-      sodium-native: 4.3.3
-    transitivePeerDependencies:
-      - bare-url
 
-  '@stellar/stellar-sdk@12.3.0':
+  '@stellar/stellar-sdk@14.5.0':
     dependencies:
-      '@stellar/stellar-base': 12.1.1
+      '@stellar/stellar-base': 14.0.4
       axios: 1.13.5
       bignumber.js: 9.3.1
+      commander: 14.0.3
       eventsource: 2.0.2
+      feaxios: 0.0.23
       randombytes: 2.1.0
       toml: 3.0.0
       urijs: 1.19.11
     transitivePeerDependencies:
-      - bare-url
       - debug
 
   '@swc/helpers@0.5.15':
@@ -3507,20 +3503,6 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
-  bare-addon-resolve@1.10.0:
-    dependencies:
-      bare-module-resolve: 1.12.1
-      bare-semver: 1.0.2
-    optional: true
-
-  bare-module-resolve@1.12.1:
-    dependencies:
-      bare-semver: 1.0.2
-    optional: true
-
-  bare-semver@1.0.2:
-    optional: true
-
   base32.js@0.1.0: {}
 
   base64-js@1.5.1: {}
@@ -3604,6 +3586,8 @@ snapshots:
   combined-stream@1.0.8:
     dependencies:
       delayed-stream: 1.0.0
+
+  commander@14.0.3: {}
 
   commander@4.1.1: {}
 
@@ -3738,6 +3722,10 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.3
 
+  feaxios@0.0.23:
+    dependencies:
+      is-retry-allowed: 3.0.0
+
   fill-range@7.1.1:
     dependencies:
       to-regex-range: 5.0.1
@@ -3837,6 +3825,8 @@ snapshots:
       is-extglob: 2.1.1
 
   is-number@7.0.0: {}
+
+  is-retry-allowed@3.0.0: {}
 
   is-typed-array@1.1.15:
     dependencies:
@@ -4142,13 +4132,6 @@ snapshots:
       tiny-invariant: 1.3.3
       victory-vendor: 36.9.2
 
-  require-addon@1.2.0:
-    dependencies:
-      bare-addon-resolve: 1.10.0
-    transitivePeerDependencies:
-      - bare-url
-    optional: true
-
   resolve@1.22.11:
     dependencies:
       is-core-module: 2.16.1
@@ -4215,13 +4198,6 @@ snapshots:
       '@img/sharp-win32-arm64': 0.34.5
       '@img/sharp-win32-ia32': 0.34.5
       '@img/sharp-win32-x64': 0.34.5
-    optional: true
-
-  sodium-native@4.3.3:
-    dependencies:
-      require-addon: 1.2.0
-    transitivePeerDependencies:
-      - bare-url
     optional: true
 
   sonner@1.7.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
@@ -4316,8 +4292,6 @@ snapshots:
   ts-interface-checker@0.1.13: {}
 
   tslib@2.8.1: {}
-
-  tweetnacl@1.0.3: {}
 
   typed-array-buffer@1.0.3:
     dependencies:

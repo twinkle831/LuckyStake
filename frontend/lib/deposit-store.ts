@@ -8,7 +8,8 @@ export interface DepositEntry {
   timestamp: Date
   txHash: string
   status: "confirmed" | "pending"
-  type: "deposit" | "withdraw" | "claim"
+  type: "deposit" | "withdraw" | "claim" | "payout"
+  payoutSubtype?: "win" | "refund"
 }
 
 // In-memory store (resets on refresh). In production this comes from on-chain.
@@ -91,6 +92,32 @@ export function addClaim(poolId: string, poolName: string, amount: number) {
       status: "confirmed",
       timestamp: new Date(),
       type: "claim",
+    },
+    ...deposits,
+  ]
+  notify()
+}
+
+export function addPayout(
+  poolId: string,
+  poolName: string,
+  amount: number,
+  payoutSubtype: "win" | "refund",
+  txHash?: string
+) {
+  deposits = [
+    {
+      id: crypto.randomUUID(),
+      poolId,
+      poolName,
+      amount,
+      tickets: 0,
+      winProbability: "0%",
+      txHash: txHash ?? generateTxHash(),
+      status: "confirmed",
+      timestamp: new Date(),
+      type: "payout",
+      payoutSubtype,
     },
     ...deposits,
   ]

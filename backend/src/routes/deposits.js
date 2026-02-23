@@ -43,15 +43,15 @@ router.post("/", auth, async (req, res, next) => {
     try {
       verified = await verifyDepositTransaction(txHash, poolType, amount, req.publicKey);
     } catch (verifyError) {
-      return res.status(400).json({ 
-        error: `Transaction verification failed: ${verifyError.message}` 
+      return res.status(400).json({
+        error: `Transaction verification failed: ${verifyError.message}`
       });
     }
 
     // Verify depositor matches authenticated user
     if (verified.depositor !== req.publicKey) {
-      return res.status(403).json({ 
-        error: "Transaction depositor does not match authenticated user" 
+      return res.status(403).json({
+        error: "Transaction depositor does not match authenticated user"
       });
     }
 
@@ -119,29 +119,53 @@ router.post("/:id/withdraw", auth, async (req, res, next) => {
   try {
     const deposit = store.deposits.get(req.params.id);
 
-    if (!deposit)                             return res.status(404).json({ error: "Deposit not found" });
-    if (deposit.publicKey !== req.publicKey)  return res.status(403).json({ error: "Not your deposit" });
-    if (deposit.withdrawnAt)                  return res.status(400).json({ error: "Already withdrawn" });
+    if (!deposit) return res.status(404).json({ error: "Deposit not found" });
+    if (deposit.publicKey !== req.publicKey) return res.status(403).json({ error: "Not your deposit" });
+    if (deposit.withdrawnAt) return res.status(400).json({ error: "Already withdrawn" });
 
-    // ── TODO: Smart Contract Hook ───────────────────────────────────────────
-    // When smart contracts are ready:
-    //   1. Build an unsigned withdrawal XDR and return it to the frontend
-    //   2. Frontend signs it with Freighter/xBull and submits to Stellar
-    //   3. Frontend calls back with the txHash to confirm
-    //   4. Only then mark withdrawnAt below
+    // ── Send real XLM back to the depositor via Horizon ─────────────────────
+    // This uses the admin account (which holds the pooled funds) to refund
+    // the exact deposited amount to the user's wallet.
+    const { sendXLMPayment } = require("../services/payout-service");
+    let txHash;
+    try {
+      const tag = deposit.poolType.charAt(0).toUpperCase() + deposit.poolType.slice(1);
+      const result = await sendXLMPayment(
+        deposit.publicKey,
+        deposit.amount,
+        `LuckyStake ${tag} Withdraw`
+      );
+      txHash = result.txHash;
+      console.log(`[withdraw] Sent ${deposit.amount} XLM → ${deposit.publicKey.slice(0, 8)} | tx: ${txHash}`);
+    } catch (payErr) {
+      console.error("[withdraw] XLM payment failed:", payErr.message);
+      return res.status(502).json({
+        error: "XLM refund failed — your deposit is still active",
+        detail: payErr.message,
+      });
+    }
 
-    deposit.withdrawnAt = new Date().toISOString();
+    // ── Mark deposit withdrawn and persist ───────────────────────────────────
+    const now = new Date().toISOString();
+    deposit.withdrawnAt = now;
+    deposit.payoutAt = now;
+    deposit.payoutTxHash = txHash;
+    deposit.payoutType = "refund";
 
     const pool = store.pools.get(deposit.poolType);
-    pool.totalDeposited = Math.max(0, pool.totalDeposited - deposit.amount);
-    pool.participants = countUniqueParticipants(deposit.poolType);
+    if (pool) {
+      pool.totalDeposited = Math.max(0, pool.totalDeposited - deposit.amount);
+      pool.participants = countUniqueParticipants(deposit.poolType);
+    }
 
     const user = store.users.get(req.publicKey);
     if (user) {
       user.tickets = Math.max(0, user.tickets - deposit.tickets);
     }
 
-    res.json({ message: "Withdrawal recorded", deposit });
+    store.persist();
+
+    res.json({ message: "Withdrawal complete", deposit, txHash });
   } catch (err) {
     next(err);
   }
@@ -155,5 +179,34 @@ function countUniqueParticipants(poolType) {
       .map((d) => d.publicKey)
   ).size;
 }
+
+/**
+ * GET /api/deposits/history
+ * Full transaction history for the authenticated user, sourced from the
+ * persistent backend store. Survives logout and page refresh.
+ * Returns deposits (including payout info) in descending time order.
+ */
+router.get("/history", auth, (req, res) => {
+  const all = Array.from(store.deposits.values())
+    .filter((d) => d.publicKey === req.publicKey)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  const history = all.map((d) => ({
+    id: d.id,
+    poolType: d.poolType,
+    amount: d.amount,
+    tickets: d.tickets,
+    txHash: d.txHash,
+    createdAt: d.createdAt,
+    withdrawnAt: d.withdrawnAt ?? null,
+    // Payout info (set after draw)
+    payoutAt: d.payoutAt ?? null,
+    payoutTxHash: d.payoutTxHash ?? null,
+    payoutType: d.payoutType ?? null,   // "win" | "refund" | null
+    status: d.withdrawnAt ? "settled" : "active",
+  }));
+
+  res.json({ history, count: history.length });
+});
 
 module.exports = router;
