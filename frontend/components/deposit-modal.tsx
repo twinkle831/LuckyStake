@@ -154,7 +154,8 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
         throw new Error(errorData.error || `Backend error: ${response.status}`)
       }
 
-      // 3. Update local store (include real tx hash for Stellar Expert link)
+      const { deposit } = await response.json()
+      // 3. Update local store (include backend id for withdraw, real tx hash for Stellar Expert)
       addDeposit({
         poolId: pool.id,
         poolName: pool.name,
@@ -162,6 +163,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
         tickets,
         winProbability: winProb,
         txHash: result.txHash,
+        backendDepositId: deposit?.id,
       })
 
       setIsDepositing(false)

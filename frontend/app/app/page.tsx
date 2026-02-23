@@ -22,6 +22,16 @@ import { Wallet, ArrowRight, LayoutGrid, PieChart, Trophy } from "lucide-react"
 
 export type Tab = "pools" | "dashboard" | "draws"
 
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
+const SS_KEY = "luckystake_wallet"
+function getToken(): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = sessionStorage.getItem(SS_KEY)
+    return raw ? (JSON.parse(raw)?.token ?? null) : null
+  } catch { return null }
+}
+
 function AppContent() {
   const { isConnected } = useWallet()
   const { toast } = useToast()
@@ -34,12 +44,34 @@ function AppContent() {
   const [detailPool, setDetailPool] = useState<Pool | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [claimableByPool, setClaimableByPool] = useState<Record<string, boolean>>({})
 
   // Simulate initial data fetch
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 1200)
     return () => clearTimeout(t)
   }, [])
+
+  // Fetch claimable (can claim principal after draw) per pool when connected
+  useEffect(() => {
+    if (!isConnected) {
+      setClaimableByPool({})
+      return
+    }
+    const token = getToken()
+    if (!token) return
+    fetch(`${API}/api/deposits/my`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.deposits) return
+        const next: Record<string, boolean> = {}
+        for (const d of data.deposits) {
+          if (d.poolType && d.claimable) next[d.poolType] = true
+        }
+        setClaimableByPool(next)
+      })
+      .catch(() => setClaimableByPool({}))
+  }, [isConnected])
 
   function handleDeposit(pool: Pool) {
     if (!isConnected) {
@@ -152,7 +184,7 @@ function AppContent() {
           (loading ? (
             <DashboardSkeleton />
           ) : (
-            <UserDashboard onWithdraw={handleWithdraw} />
+            <UserDashboard onWithdraw={handleWithdraw} claimableByPool={claimableByPool} />
           ))}
 
         {/* Draws tab */}
@@ -220,6 +252,7 @@ function AppContent() {
           setDetailOpen(false)
           handleWithdraw(p)
         }}
+        claimableByPool={claimableByPool}
       />
     </div>
   )

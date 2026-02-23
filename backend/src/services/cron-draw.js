@@ -35,31 +35,24 @@ function pickWinner(activeDeposits) {
 
 /**
  * Run draw automation for a single pool.
- * 1. Optionally harvest yield (if yieldAmount provided)
- * 2. Execute on-chain draw
- * 3. Pick winner from active deposits, record prize, send payouts
- * 4. Advance nextDraw on success
- */
-/**
- * Run draw automation for a single pool.
  *
- * Pre-flight reads get_prize_fund + get_total_deposits from the contract:
- *   - totalDeposits == 0  → error (nothing to do)
- *   - prizeFund == 0      → skip execute_draw (would panic), go straight to
- *                           principal refunds via payout-service (real Horizon txs)
- *   - prizeFund > 0       → full flow: execute_draw (VRF winner + on-chain prize
- *                           transfer) then principal refunds via payout-service
+ * Flow when USE_ONCHAIN_PAYOUTS is set (default):
+ *   1. Harvest yield (optional) → prize fund
+ *   2. Withdraw principal from Blend → contract has tokens
+ *   3. execute_draw on-chain → prize to winner (real tx hash), winner from VRF
+ *   4. Record draw; users claim principal via contract.withdraw (frontend) — no admin XLM
  *
- * force=true is only used upstream to skip the isPeriodEnded() time check.
+ * When USE_ONCHAIN_PAYOUTS=false: send prize + principal from admin (Horizon) as before.
  */
 async function runDrawForPool(poolType, options = {}) {
   const { harvestYieldAmount, harvestMinReturn } = options;
   const contractId = poolContract.getContractId(poolType);
+  const useOnchainPayouts = process.env.USE_ONCHAIN_PAYOUTS !== "false";
 
-  const results = { poolType, harvest: null, draw: null, payouts: null, error: null };
+  const results = { poolType, harvest: null, withdrawBlend: null, draw: null, payouts: null, error: null };
 
   try {
-    // ── 1. Harvest yield (optional, before draw) ────────────────────────────
+    // ── 1. Harvest yield (optional) ─────────────────────────────────────────
     if (harvestYieldAmount != null && harvestYieldAmount > 0) {
       try {
         const minRet = harvestMinReturn ?? harvestYieldAmount;
@@ -70,7 +63,7 @@ async function runDrawForPool(poolType, options = {}) {
       }
     }
 
-    // ── 2. Pre-flight: read on-chain state so we don't blindly call execute_draw ──
+    // ── 2. Pre-flight: prize fund + total deposits (stroops) ───────────────
     const [onChainPrizeFund, onChainTotalDeposits] = await Promise.all([
       poolContract.simulateRead(contractId, "get_prize_fund"),
       poolContract.simulateRead(contractId, "get_total_deposits"),
@@ -79,18 +72,32 @@ async function runDrawForPool(poolType, options = {}) {
     const prizeFund = typeof onChainPrizeFund === "bigint"
       ? Number(onChainPrizeFund)
       : Number(onChainPrizeFund ?? 0);
-    const totalDeposits = typeof onChainTotalDeposits === "bigint"
+    const totalDepositsStroops = typeof onChainTotalDeposits === "bigint"
       ? Number(onChainTotalDeposits)
       : Number(onChainTotalDeposits ?? 0);
 
-    console.log(`[cron-draw] ${poolType}: onChainPrizeFund=${prizeFund} onChainTotalDeposits=${totalDeposits}`);
+    console.log(`[cron-draw] ${poolType}: prizeFund=${prizeFund} totalDeposits=${totalDepositsStroops}`);
 
-    if (totalDeposits <= 0) {
+    if (totalDepositsStroops <= 0) {
       results.error = "No deposits in contract — nothing to draw or refund";
       return results;
     }
 
-    // ── 3a. prizeFund > 0 → full on-chain draw (VRF winner + prize + refunds) ──
+    // ── 3. Withdraw principal from Blend so contract can pay users on-chain ───
+    if (useOnchainPayouts && totalDepositsStroops > 0) {
+      try {
+        const supplied = await poolContract.getSuppliedToBlend(contractId);
+        const toWithdraw = Math.min(Number(supplied), totalDepositsStroops);
+        if (toWithdraw > 0) {
+          await poolContract.withdrawFromBlend(contractId, toWithdraw, Math.floor(toWithdraw * 0.99));
+          results.withdrawBlend = { success: true, amount: toWithdraw };
+        }
+      } catch (e) {
+        results.withdrawBlend = { success: false, error: e.message };
+        console.warn(`[cron-draw] ${poolType}: withdraw_from_blend failed:`, e.message);
+      }
+    }
+
     let winner = null;
     let prizeAmount = 0;
     let contractTxHash = null;
@@ -99,33 +106,26 @@ async function runDrawForPool(poolType, options = {}) {
       const drawResult = await poolContract.executeDraw(contractId);
       contractTxHash = drawResult.hash;
       winner = drawResult.winner ?? null;
-      // Prize in XLM: contract pays winner on-chain in the token; we record for display
-      // Use stored yieldAccrued if available, otherwise derive from on-chain prize fund
       const pool = store.pools.get(poolType);
-      prizeAmount = pool?.yieldAccrued ?? Number(prizeFund) / 1e7; // stroops → XLM
-      results.draw = { success: true, hash: contractTxHash, mode: "onchain" };
-
+      prizeAmount = pool?.yieldAccrued ?? Number(prizeFund) / 1e7;
+      results.draw = { success: true, hash: contractTxHash, winner, mode: "onchain" };
     } else {
-      // ── 3b. prizeFund == 0 → principal-return-only draw ─────────────────────
-      // execute_draw would panic ("no prize to distribute"), so we skip it.
-      // We still send real XLM refunds via payout-service (Horizon transactions).
-      console.log(`[cron-draw] ${poolType}: PrizeFund=0, skipping execute_draw — returning principal only`);
+      console.log(`[cron-draw] ${poolType}: PrizeFund=0, skipping execute_draw`);
       results.draw = {
         success: true,
         hash: null,
         mode: "principal-only",
-        note: "No yield accrued yet — principal returned to all depositors",
+        note: "No yield — principal claimable on-chain",
       };
     }
 
-    // ── 4. Collect active backend deposits + send real XLM refunds ──────────
     const pool = store.pools.get(poolType);
     const activeDeposits = Array.from(store.deposits.values()).filter(
       (d) => d.poolType === poolType && !d.withdrawnAt
     );
 
     return await _recordAndPayout(
-      poolType, prizeAmount, winner, activeDeposits, results, pool, contractTxHash
+      poolType, prizeAmount, winner, activeDeposits, results, pool, contractTxHash, useOnchainPayouts
     );
 
   } catch (e) {
@@ -136,10 +136,10 @@ async function runDrawForPool(poolType, options = {}) {
 }
 
 /**
- * Shared: record draw in store, send XLM payouts, mark deposits, broadcast, advance nextDraw.
- * Called by both force (off-chain) and on-chain paths.
+ * Shared: record draw in store; optionally send admin XLM payouts (when not using on-chain).
+ * When useOnchainPayouts: no admin payouts — users claim principal via contract (real tx hashes).
  */
-async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, results, pool, contractTxHash) {
+async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, results, pool, contractTxHash, useOnchainPayouts) {
   const drawId = uuidv4();
   const drawRecord = {
     id: drawId,
@@ -150,8 +150,8 @@ async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, r
     totalTickets: activeDeposits.reduce((s, d) => s + (d.tickets || 1), 0),
     drawnAt: new Date().toISOString(),
     contractTxHash: contractTxHash ?? null,
-    payoutStatus: "pending",
-    txHashes: [],
+    payoutStatus: useOnchainPayouts ? "claimable" : "pending",
+    txHashes: contractTxHash ? [contractTxHash] : [],
   };
   store.draws.set(drawId, drawRecord);
 
@@ -167,6 +167,18 @@ async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, r
     totalTickets: drawRecord.totalTickets,
   });
 
+  // Winner's prize tx hash (on-chain) — so frontend can show real hash for "You won"
+  if (winner && contractTxHash) {
+    for (const d of activeDeposits) {
+      if (d.publicKey === winner) {
+        d.prizeTxHash = contractTxHash;
+        d.payoutType = "win";
+        d.payoutAt = drawRecord.drawnAt;
+        break;
+      }
+    }
+  }
+
   if (pool) {
     pool.yieldAccrued = 0;
     if (!Array.isArray(pool.prizeHistory)) pool.prizeHistory = [];
@@ -174,16 +186,13 @@ async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, r
   }
   store.persist();
 
-  // Send XLM payouts: prize to winner (if any) + principal refund to every depositor
-  if (activeDeposits.length > 0) {
+  if (!useOnchainPayouts && activeDeposits.length > 0) {
     try {
       const payoutResults = await payoutService.processDrawPayouts(
         poolType, prizeAmount, winner, activeDeposits
       );
-
       const now = new Date().toISOString();
-      const txHashes = [];
-
+      const txHashes = [...(contractTxHash ? [contractTxHash] : [])];
       for (const pr of payoutResults) {
         if (pr.txHash) txHashes.push(pr.txHash);
         if (pr.depositId) {
@@ -196,26 +205,17 @@ async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, r
           }
         }
       }
-
-      drawRecord.payoutStatus = payoutResults.every((r) => !r.error)
-        ? "complete"
-        : payoutResults.some((r) => r.txHash) ? "partial" : "failed";
+      drawRecord.payoutStatus = payoutResults.every((r) => !r.error) ? "complete" : "partial";
       drawRecord.txHashes = txHashes;
       store.persist();
-
-      results.payouts = {
-        success: true,
-        count: payoutResults.length,
-        failed: payoutResults.filter((r) => r.error).length,
-        txHashes,
-        winner,
-      };
+      results.payouts = { success: true, count: payoutResults.length, txHashes, winner };
     } catch (e) {
       drawRecord.payoutStatus = "failed";
       store.persist();
       results.payouts = { success: false, error: e.message };
-      console.error("[cron-draw] Payout error:", e.message);
     }
+  } else if (useOnchainPayouts) {
+    results.payouts = { success: true, mode: "onchain", note: "Users claim principal via contract" };
   }
 
   try {

@@ -105,13 +105,62 @@ router.post("/", auth, async (req, res, next) => {
 router.get("/my", auth, (req, res) => {
   const deposits = Array.from(store.deposits.values())
     .filter((d) => d.publicKey === req.publicKey)
-    .sort((a, b) => new Date(b.depositedAt) - new Date(a.depositedAt));
+    .sort((a, b) => new Date(b.depositedAt || b.createdAt || 0) - new Date(a.depositedAt || a.createdAt || 0));
 
   const totalActive = deposits
     .filter((d) => !d.withdrawnAt)
     .reduce((sum, d) => sum + d.amount, 0);
 
-  res.json({ deposits, totalActive });
+  // Mark claimable: draw happened for this pool after deposit, user has not withdrawn
+  const withClaimable = deposits.map((d) => {
+    let claimable = false;
+    if (!d.withdrawnAt && d.poolType) {
+      const poolDraws = Array.from(store.draws.values())
+        .filter((dr) => dr.poolType === d.poolType)
+        .sort((a, b) => new Date(b.drawnAt) - new Date(a.drawnAt));
+      const latest = poolDraws[0];
+      if (latest && new Date(latest.drawnAt) >= new Date(d.depositedAt || d.createdAt || 0)) {
+        claimable = true;
+      }
+    }
+    return { ...d, claimable };
+  });
+
+  res.json({ deposits: withClaimable, totalActive });
+});
+
+// ─── POST /api/deposits/:id/claim-complete ───────────────────────────────────
+// After user claims principal on-chain (contract.withdraw), record the real tx hash.
+// Body: { txHash: string }
+router.post("/:id/claim-complete", auth, async (req, res, next) => {
+  try {
+    const deposit = store.deposits.get(req.params.id);
+    if (!deposit) return res.status(404).json({ error: "Deposit not found" });
+    if (deposit.publicKey !== req.publicKey) return res.status(403).json({ error: "Not your deposit" });
+    if (deposit.withdrawnAt) return res.status(400).json({ error: "Already claimed" });
+
+    const txHash = (req.body?.txHash || "").trim();
+    if (!txHash) return res.status(400).json({ error: "txHash is required" });
+
+    const now = new Date().toISOString();
+    deposit.withdrawnAt = now;
+    deposit.payoutAt = now;
+    deposit.payoutTxHash = txHash;
+    if (deposit.payoutType !== "win") deposit.payoutType = "refund";
+
+    const pool = store.pools.get(deposit.poolType);
+    if (pool) {
+      pool.totalDeposited = Math.max(0, pool.totalDeposited - deposit.amount);
+      pool.participants = countUniqueParticipants(deposit.poolType);
+    }
+    const user = store.users.get(req.publicKey);
+    if (user) user.tickets = Math.max(0, (user.tickets || 0) - (deposit.tickets || 0));
+    store.persist();
+
+    res.json({ message: "Claim recorded", deposit, txHash });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── POST /api/deposits/:id/withdraw ─────────────────────────────────────────
@@ -182,29 +231,41 @@ function countUniqueParticipants(poolType) {
 
 /**
  * GET /api/deposits/history
- * Full transaction history for the authenticated user, sourced from the
- * persistent backend store. Survives logout and page refresh.
- * Returns deposits (including payout info) in descending time order.
+ * Full transaction history for the authenticated user.
+ * Returns claimable flag and real tx hashes (payoutTxHash, prizeTxHash for winner).
  */
 router.get("/history", auth, (req, res) => {
   const all = Array.from(store.deposits.values())
     .filter((d) => d.publicKey === req.publicKey)
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    .sort((a, b) => new Date(b.depositedAt || b.createdAt || 0) - new Date(a.depositedAt || a.createdAt || 0));
 
-  const history = all.map((d) => ({
-    id: d.id,
-    poolType: d.poolType,
-    amount: d.amount,
-    tickets: d.tickets,
-    txHash: d.txHash,
-    createdAt: d.createdAt,
-    withdrawnAt: d.withdrawnAt ?? null,
-    // Payout info (set after draw)
-    payoutAt: d.payoutAt ?? null,
-    payoutTxHash: d.payoutTxHash ?? null,
-    payoutType: d.payoutType ?? null,   // "win" | "refund" | null
-    status: d.withdrawnAt ? "settled" : "active",
-  }));
+  const history = all.map((d) => {
+    let claimable = false;
+    if (!d.withdrawnAt && d.poolType) {
+      const poolDraws = Array.from(store.draws.values())
+        .filter((dr) => dr.poolType === d.poolType)
+        .sort((a, b) => new Date(b.drawnAt) - new Date(a.drawnAt));
+      const latest = poolDraws[0];
+      if (latest && new Date(latest.drawnAt) >= new Date(d.depositedAt || d.createdAt || 0)) {
+        claimable = true;
+      }
+    }
+    return {
+      id: d.id,
+      poolType: d.poolType,
+      amount: d.amount,
+      tickets: d.tickets,
+      txHash: d.txHash,
+      createdAt: d.depositedAt || d.createdAt,
+      withdrawnAt: d.withdrawnAt ?? null,
+      payoutAt: d.payoutAt ?? null,
+      payoutTxHash: d.payoutTxHash ?? null,
+      prizeTxHash: d.prizeTxHash ?? null,
+      payoutType: d.payoutType ?? null,
+      status: d.withdrawnAt ? "settled" : "active",
+      claimable,
+    };
+  });
 
   res.json({ history, count: history.length });
 });

@@ -1,5 +1,7 @@
 export interface DepositEntry {
   id: string
+  /** Backend deposit id — required for POST /api/deposits/:id/withdraw */
+  backendDepositId?: string
   poolId: string
   poolName: string
   amount: number
@@ -44,12 +46,13 @@ function generateTxHash(): string {
 }
 
 export function addDeposit(
-  entry: Omit<DepositEntry, "id" | "txHash" | "status" | "timestamp" | "type"> & { txHash?: string }
+  entry: Omit<DepositEntry, "id" | "txHash" | "status" | "timestamp" | "type"> & { txHash?: string; backendDepositId?: string }
 ) {
   deposits = [
     {
       ...entry,
       id: crypto.randomUUID(),
+      backendDepositId: entry.backendDepositId,
       txHash: entry.txHash ?? generateTxHash(),
       status: "confirmed",
       timestamp: new Date(),

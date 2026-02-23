@@ -1,27 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import {
-  X,
-  Loader2,
-  ArrowRight,
-  AlertTriangle,
-  AlertCircle,
-  Banknote,
-  Sparkles,
-  ExternalLink,
-} from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
+import { X, Loader2, ArrowRight, AlertCircle, ExternalLink } from "lucide-react"
 import { type Pool } from "@/lib/pool-data"
-import {
-  getPoolBalance,
-  getAccruedInterest,
-  addWithdrawal,
-  addClaim,
-  addPayout,
-  getDeposits,
-} from "@/lib/deposit-store"
+import { addPayout } from "@/lib/deposit-store"
 import { useWallet } from "@/context/wallet-context"
 import { isStellarTxHash, stellarExpertTxUrl } from "@/lib/stellar-explorer"
+import { executeWithdraw } from "@/lib/soroban-contracts"
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
 const SS_KEY = "luckystake_wallet"
@@ -40,38 +25,51 @@ interface Props {
   onSuccess: () => void
 }
 
-type Mode = "withdraw" | "claim"
 type Step = "input" | "confirm" | "success"
 
+/** Deposit from backend /my with claimable flag */
+interface MyDeposit {
+  id: string
+  poolType: string
+  amount: number
+  claimable?: boolean
+  withdrawnAt?: string | null
+}
+
 export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
-  const [mode, setMode] = useState<Mode>("withdraw")
-  const [amount, setAmount] = useState("")
   const [step, setStep] = useState<Step>("input")
   const [isProcessing, setIsProcessing] = useState(false)
   const [withdrawTxHash, setWithdrawTxHash] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
-  const { refreshBalance } = useWallet()
+  const [claimableDeposit, setClaimableDeposit] = useState<MyDeposit | null>(null)
+  const { address, walletType, refreshBalance } = useWallet()
 
-  const poolBalance = useMemo(
-    () => (pool ? getPoolBalance(pool.id) : 0),
-    [pool, open]
-  )
-  const accrued = useMemo(
-    () => (pool ? getAccruedInterest(pool.id) : 0),
-    [pool, open]
-  )
+  // Fetch /my when modal opens — user can only claim principal after the pool draw ends
+  useEffect(() => {
+    if (!open || !pool) {
+      setClaimableDeposit(null)
+      return
+    }
+    const token = getToken()
+    if (!token) return
+    fetch(`${API}/api/deposits/my`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.deposits) return
+        const d = data.deposits.find(
+          (x: MyDeposit) => x.poolType === pool.id && x.claimable
+        )
+        setClaimableDeposit(d ?? null)
+      })
+      .catch(() => setClaimableDeposit(null))
+  }, [open, pool])
 
-  const numAmount = parseFloat(amount) || 0
-  const maxWithdraw = poolBalance
-  const isValid =
-    mode === "withdraw"
-      ? numAmount > 0 && numAmount <= maxWithdraw
-      : accrued > 0
+  const canClaim = !!claimableDeposit && claimableDeposit.amount > 0
 
   function handleClose() {
-    setAmount("")
     setStep("input")
-    setMode("withdraw")
     setIsProcessing(false)
     setWithdrawTxHash(null)
     setApiError(null)
@@ -79,72 +77,42 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
   }
 
   async function handleConfirm() {
-    if (!pool) return
+    if (!pool || !claimableDeposit || !address || !walletType) return
     setStep("confirm")
     setIsProcessing(true)
     setApiError(null)
 
     try {
-      if (mode === "withdraw") {
-        // Find the user's active deposit for this pool
-        const allDeposits = getDeposits()
-        const activeDeposit = allDeposits
-          .filter((d) => d.poolId === pool.id && d.type === "deposit")
-          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0]
-
-        if (!activeDeposit) {
-          setApiError("No active deposit found for this pool in local history. Try refreshing.")
-          setStep("input")
-          setIsProcessing(false)
-          return
-        }
-
-        const token = getToken()
-        if (!token) {
-          setApiError("Not authenticated — please reconnect your wallet.")
-          setStep("input")
-          setIsProcessing(false)
-          return
-        }
-
-        const res = await fetch(`${API}/api/deposits/${activeDeposit.id}/withdraw`, {
+      const result = await executeWithdraw(
+        pool.id,
+        claimableDeposit.amount,
+        address,
+        walletType
+      )
+      if (!result.success || !result.txHash) {
+        setApiError(result.error ?? "Claim failed")
+        setStep("input")
+        setIsProcessing(false)
+        return
+      }
+      const token = getToken()
+      if (token) {
+        await fetch(`${API}/api/deposits/${claimableDeposit.id}/claim-complete`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({ txHash: result.txHash }),
         })
-
-        const data = await res.json()
-        if (!res.ok) {
-          setApiError(data.error ?? "Withdrawal failed — please try again.")
-          setStep("input")
-          setIsProcessing(false)
-          return
-        }
-
-        // Real txHash from Horizon
-        setWithdrawTxHash(data.txHash ?? null)
-
-        // Update in-memory store to reflect the refund
-        addPayout(pool.id, pool.name, activeDeposit.amount, "refund", data.txHash ?? undefined)
-
-        // Refresh wallet balance to show the XLM that came back
-        try { await refreshBalance() } catch { /* ignore */ }
-
-      } else {
-        // Claim interest — still simulated (no yield yet on testnet)
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-        addClaim(pool.id, pool.name, accrued)
       }
+      setWithdrawTxHash(result.txHash)
+      addPayout(pool.id, pool.name, claimableDeposit.amount, "refund", result.txHash)
+      try { await refreshBalance() } catch { /* ignore */ }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Network error"
-      setApiError(msg)
+      setApiError(err instanceof Error ? err.message : "Network error")
       setStep("input")
-      setIsProcessing(false)
-      return
     }
-
     setIsProcessing(false)
     setStep("success")
   }
@@ -171,176 +139,77 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
         {/* Step: Input */}
         {step === "input" && (
           <>
-            {/* Mode toggle */}
-            <div className="flex items-center gap-1 rounded-lg bg-secondary/50 p-1 mb-6">
-              <button
-                onClick={() => setMode("withdraw")}
-                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${mode === "withdraw"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Banknote className="h-4 w-4" />
-                  Withdraw
-                </div>
-              </button>
-              <button
-                onClick={() => setMode("claim")}
-                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${mode === "claim"
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-                  }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Claim Interest
-                </div>
-              </button>
-            </div>
-
-            {mode === "withdraw" ? (
+            {claimableDeposit ? (
               <>
                 <h2 className="font-display text-xl font-bold text-foreground mb-1">
-                  Withdraw from {pool.name}
+                  Claim principal
                 </h2>
                 <p className="text-sm text-muted-foreground mb-6">
-                  Withdraw your principal. Tickets will be removed proportionally.
-                </p>
-
-                {/* Amount input */}
-                <div className="rounded-xl border border-border bg-secondary/30 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-muted-foreground">
-                      Withdraw Amount
-                    </label>
-                    <span className="text-xs text-muted-foreground">
-                      Available:{" "}
-                      <span className="text-foreground">
-                        {poolBalance.toLocaleString()} XLM
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="0.00"
-                      className="flex-1 bg-transparent font-display text-3xl font-bold text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold text-foreground">
-                      XLM
-                    </span>
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    {[25, 50, 75, 100].map((pct) => (
-                      <button
-                        key={pct}
-                        onClick={() =>
-                          setAmount(
-                            String(
-                              Math.floor(poolBalance * (pct / 100) * 100) / 100
-                            )
-                          )
-                        }
-                        className="rounded-lg border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                      >
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Warning */}
-                <div className="mt-4 flex items-start gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-500 mt-0.5" />
-                  <div className="text-xs text-muted-foreground">
-                    <p className="font-medium text-yellow-500 mb-1">
-                      Ticket Reduction
-                    </p>
-                    Withdrawing will reduce your tickets and lower your odds for
-                    the next draw. Your remaining balance will continue earning
-                    tickets.
-                  </div>
-                </div>
-
-                {numAmount > maxWithdraw && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    Exceeds your pool balance
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <h2 className="font-display text-xl font-bold text-foreground mb-1">
-                  Claim Interest
-                </h2>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Claim accrued yield without affecting your principal or tickets.
+                  The draw is over. Get your principal back from the smart contract — it will appear in your wallet with a real transaction.
                 </p>
 
                 <div className="rounded-xl border border-border bg-secondary/30 p-6 text-center">
                   <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                    Accrued Interest
+                    Principal to claim
                   </p>
                   <p className="font-display text-4xl font-bold text-accent">
-                    {accrued.toFixed(2)} XLM
+                    {claimableDeposit.amount.toLocaleString()} XLM
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    From {pool.name} yield generation
+                    From {pool.name} — paid by the contract (from Blend)
                   </p>
                 </div>
 
-                {accrued === 0 && (
-                  <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    No interest accrued yet. Deposit and wait for yield to
-                    accumulate.
+                {apiError && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    {apiError}
                   </div>
                 )}
+
+                <button
+                  onClick={handleConfirm}
+                  disabled={!canClaim}
+                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Claim {claimableDeposit.amount.toLocaleString()} XLM
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="font-display text-xl font-bold text-foreground mb-1">
+                  Claim after draw
+                </h2>
+                <p className="text-sm text-muted-foreground mb-6">
+                  You can claim your principal only after this pool&apos;s draw has ended. Once the draw runs, you&apos;ll see a &quot;Claim principal&quot; button here and on your dashboard.
+                </p>
+                <button
+                  onClick={handleClose}
+                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-4 text-sm font-medium text-foreground hover:bg-secondary"
+                >
+                  Close
+                </button>
               </>
             )}
-
-            {/* API error banner */}
-            {apiError && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                {apiError}
-              </div>
-            )}
-
-            <button
-              onClick={handleConfirm}
-              disabled={!isValid}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {mode === "withdraw"
-                ? `Withdraw ${numAmount > 0 ? `${numAmount.toLocaleString()} XLM` : ""}`
-                : `Claim ${accrued.toFixed(2)} XLM`}
-              <ArrowRight className="h-4 w-4" />
-            </button>
           </>
         )}
 
         {/* Step: Confirm */}
-        {step === "confirm" && (
+        {step === "confirm" && claimableDeposit && (
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="h-12 w-12 animate-spin text-accent mb-6" />
             <h3 className="font-display text-xl font-bold text-foreground">
-              {mode === "withdraw" ? "Sending XLM..." : "Claiming Interest"}
+              Claiming principal...
             </h3>
             <p className="mt-2 text-sm text-muted-foreground text-center max-w-xs">
-              {mode === "withdraw"
-                ? "Sending your principal back to your wallet via Stellar..."
-                : "Claiming your accrued yield..."}
+              Confirm in your wallet — principal will appear with a real tx hash.
             </p>
             <div className="mt-6 rounded-xl bg-secondary/30 p-4 w-full">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Amount</span>
                 <span className="font-bold text-foreground">
-                  {mode === "withdraw" ? numAmount.toLocaleString() : accrued.toFixed(2)} XLM
+                  {claimableDeposit.amount.toLocaleString()} XLM
                 </span>
               </div>
               <div className="flex justify-between text-sm mt-2">
@@ -360,12 +229,10 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
               </svg>
             </div>
             <h3 className="font-display text-xl font-bold text-foreground">
-              {mode === "withdraw" ? "Withdrawal Complete" : "Interest Claimed"}
+              Principal claimed
             </h3>
             <p className="mt-2 text-sm text-muted-foreground text-center">
-              {mode === "withdraw"
-                ? `Your ${pool.name} principal has been returned to your wallet. Your balance has been updated.`
-                : `${accrued.toFixed(2)} XLM interest has been sent to your wallet.`}
+              Principal is in your wallet. View the transaction on Stellar Expert below.
             </p>
 
             {/* Show real Stellar tx hash */}

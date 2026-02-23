@@ -26,6 +26,8 @@ interface Props {
   onClose: () => void
   onDeposit: (pool: Pool) => void
   onWithdraw: (pool: Pool) => void
+  /** Pool id -> true if user can claim principal (draw ended) */
+  claimableByPool?: Record<string, boolean>
 }
 
 function useDeposits() {
@@ -40,6 +42,7 @@ export function PoolDetailPanel({
   onClose,
   onDeposit,
   onWithdraw,
+  claimableByPool = {},
 }: Props) {
   const [countdown, setCountdown] = useState("")
   const [suppliedToBlend, setSuppliedToBlend] = useState<number | null>(null)
@@ -218,7 +221,7 @@ export function PoolDetailPanel({
               />
               <InfoRow label="Yield Source" value="Blend lending (bTokens)" />
               <InfoRow label="Smart Contract" value="Soroban Verified" />
-              <InfoRow label="Withdrawal" value="Instant (no lock-up)" />
+              <InfoRow label="Withdrawal" value="After draw ends (claim principal)" />
             </div>
           </div>
 
@@ -241,12 +244,18 @@ export function PoolDetailPanel({
               <ArrowRight className="h-4 w-4" />
             </button>
             {myDeposits.length > 0 && (
-              <button
-                onClick={() => onWithdraw(pool)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border py-4 text-sm font-semibold text-foreground transition-all hover:bg-secondary"
-              >
-                Withdraw
-              </button>
+              claimableByPool[pool.id] ? (
+                <button
+                  onClick={() => onWithdraw(pool)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border py-4 text-sm font-semibold text-foreground transition-all hover:bg-secondary"
+                >
+                  Claim principal
+                </button>
+              ) : (
+                <p className="flex flex-1 items-center justify-center text-xs text-muted-foreground py-2">
+                  Draw not ended — claim principal after the draw.
+                </p>
+              )
             )}
           </div>
         </div>

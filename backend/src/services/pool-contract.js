@@ -14,6 +14,7 @@ const {
   assembleTransaction, // ✅ directly from top-level in v12
   nativeToScVal,
 } = require("@stellar/stellar-sdk");
+const { Address } = require("@stellar/stellar-base");
 
 // ✅ No need for @stellar/stellar-base or internal subpath imports
 // assembleTransaction and SorobanRpc.Api are both available from the top-level export
@@ -131,16 +132,18 @@ async function invoke(contractId, method, args = []) {
   // Poll for result
   const maxWait = 60;
   let waited = 0;
+  let lastTx;
   while (waited < maxWait) {
     await new Promise((r) => setTimeout(r, 2000));
     const r = await server.getTransaction(send.hash);
-    if (r.status === "SUCCESS") return { hash: send.hash, status: "SUCCESS" };
+    lastTx = r;
+    if (r.status === "SUCCESS") return { hash: send.hash, status: "SUCCESS", getTransactionResponse: r };
     if (r.status === "FAILED")
       throw new Error(`Tx failed: ${JSON.stringify(r)}`);
     waited += 2;
   }
 
-  return { hash: send.hash, status: "TIMEOUT" };
+  return { hash: send.hash, status: "TIMEOUT", getTransactionResponse: lastTx };
 }
 
 /**
@@ -170,10 +173,40 @@ async function harvestYield(contractId, amount, minReturn) {
 }
 
 /**
- * Execute draw (select winner, transfer prize).
+ * Withdraw token from Blend back to the pool (admin). Call before execute_draw
+ * so the contract has liquidity to pay prize and for users to claim principal.
+ */
+async function withdrawFromBlend(contractId, amount, minReturn) {
+  return invoke(contractId, "withdraw_from_blend", [
+    scValI128(amount),
+    scValI128(minReturn ?? amount),
+  ]);
+}
+
+/**
+ * Execute draw (select winner, transfer prize). Returns on-chain winner address.
  */
 async function executeDraw(contractId) {
-  return invoke(contractId, "execute_draw", []);
+  const out = await invoke(contractId, "execute_draw", []);
+  let winner = null;
+  if (out.getTransactionResponse && out.getTransactionResponse.returnValue) {
+    try {
+      const scv = out.getTransactionResponse.returnValue;
+      winner = Address.fromScVal(scv).toString();
+    } catch (_) {
+      // ignore decode failure
+    }
+  }
+  return { hash: out.hash, status: out.status, winner };
+}
+
+/**
+ * Get user balance from contract (stroops). For claimable amount.
+ */
+async function getUserBalance(contractId, userAddress) {
+  const addrSc = Address.fromString(userAddress).toScVal();
+  const v = await simulateRead(contractId, "get_balance", [addrSc]);
+  return v ? Number(v) : 0;
 }
 
 function getContractId(poolType) {
@@ -188,7 +221,9 @@ module.exports = {
   getSuppliedToBlend,
   getPrizeFund,
   harvestYield,
+  withdrawFromBlend,
   executeDraw,
+  getUserBalance,
   getContractId,
   scValI128,
 };

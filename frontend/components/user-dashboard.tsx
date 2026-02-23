@@ -30,7 +30,6 @@ import {
   getTotalWithdrawn,
   getTotalClaimed,
   getPoolBalance,
-  getAccruedInterest,
   addPayout,
   type DepositEntry,
 } from "@/lib/deposit-store"
@@ -48,9 +47,11 @@ type TxFilter = "all" | "deposit" | "withdraw" | "claim" | "payout"
 
 interface Props {
   onWithdraw?: (pool: Pool) => void
+  /** Pool id -> true if user can claim principal (draw ended) */
+  claimableByPool?: Record<string, boolean>
 }
 
-export function UserDashboard({ onWithdraw }: Props) {
+export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
   const { address, balance, network, disconnect, refreshBalance } = useWallet()
   const deposits = useDeposits()
   const [copied, setCopied] = useState(false)
@@ -72,7 +73,7 @@ export function UserDashboard({ onWithdraw }: Props) {
         processedDrawIds.current.add(`win-${draw.id}`)
         const poolName =
           draw.poolType.charAt(0).toUpperCase() + draw.poolType.slice(1) + " Pool"
-        addPayout(draw.poolType, poolName, draw.prizeAmount, "win", draw.txHashes[0])
+        addPayout(draw.poolType, poolName, draw.prizeAmount, "win", draw.contractTxHash ?? draw.txHashes?.[0])
         refreshBalance()
       }
     }
@@ -219,7 +220,7 @@ export function UserDashboard({ onWithdraw }: Props) {
           <div className="grid gap-4 lg:grid-cols-3">
             {userPools.map((pool) => {
               const poolBal = getPoolBalance(pool.id)
-              const interest = getAccruedInterest(pool.id)
+              const canClaim = claimableByPool[pool.id]
               return (
                 <div
                   key={pool.id}
@@ -240,30 +241,26 @@ export function UserDashboard({ onWithdraw }: Props) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="rounded-lg bg-secondary/30 p-3">
-                      <p className="text-xs text-muted-foreground">Deposited</p>
-                      <p className="font-display text-base font-bold text-foreground">
-                        ${poolBal.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-secondary/30 p-3">
-                      <p className="text-xs text-muted-foreground">
-                        Accrued Interest
-                      </p>
-                      <p className="font-display text-base font-bold text-accent">
-                        ${interest.toFixed(2)}
-                      </p>
-                    </div>
+                  <div className="rounded-lg bg-secondary/30 p-3 mb-4">
+                    <p className="text-xs text-muted-foreground">Deposited</p>
+                    <p className="font-display text-base font-bold text-foreground">
+                      {poolBal.toLocaleString()} XLM
+                    </p>
                   </div>
 
                   {onWithdraw && (
-                    <button
-                      onClick={() => onWithdraw(pool)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground transition-all hover:bg-secondary"
-                    >
-                      Withdraw / Claim
-                    </button>
+                    canClaim ? (
+                      <button
+                        onClick={() => onWithdraw(pool)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground transition-all hover:bg-secondary"
+                      >
+                        Claim principal
+                      </button>
+                    ) : (
+                      <p className="text-center text-xs text-muted-foreground py-2">
+                        Draw not ended — you can claim principal after the draw.
+                      </p>
+                    )
                   )}
                 </div>
               )

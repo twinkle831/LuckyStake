@@ -54,7 +54,9 @@ export function useTransactionHistory(address: string | null | undefined) {
                     const name = poolLabel(entry.poolType ?? "")
 
                     if (entry.payoutType === "refund" || entry.payoutType === "win") {
-                        const txHash = entry.payoutTxHash ?? undefined
+                        const txHash = entry.payoutType === "win"
+                            ? (entry.prizeTxHash ?? entry.payoutTxHash ?? undefined)
+                            : (entry.payoutTxHash ?? undefined)
                         if (txHash && existing.has(txHash)) continue
                         addPayout(entry.poolType, name, amount, entry.payoutType as "win" | "refund", txHash)
                     } else {
@@ -67,6 +69,7 @@ export function useTransactionHistory(address: string | null | undefined) {
                             tickets: typeof entry.tickets === "number" ? entry.tickets : Number(entry.tickets ?? 0),
                             winProbability: "—",
                             txHash,
+                            backendDepositId: entry.id,
                         })
                     }
                 }

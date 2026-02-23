@@ -294,6 +294,99 @@ export async function waitForConfirmation(
 }
 
 /**
+ * Build and simulate withdraw (claim principal) transaction.
+ */
+export async function buildWithdrawInvocation(
+  poolId: string,
+  amount: number,
+  userAddress: string
+): Promise<string> {
+  const StellarSdk = await import("@stellar/stellar-sdk");
+
+  const contractAddress = getContractAddress(poolId);
+  const scaledAmount = scaleAmount(amount);
+
+  const server = new StellarSdk.rpc.Server(RPC_URL, {
+    allowHttp: RPC_URL.startsWith("http://"),
+  });
+
+  const accountData = await server.getAccount(userAddress);
+  const sequence: string =
+    typeof (accountData as any).sequenceNumber === "function"
+      ? (accountData as any).sequenceNumber()
+      : (accountData as any).sequence;
+
+  const sourceAccount = new StellarSdk.Account(userAddress, sequence);
+  const contract = new StellarSdk.Contract(contractAddress);
+
+  const depositorScVal = StellarSdk.Address.fromString(userAddress).toScVal();
+  const amountScVal = StellarSdk.nativeToScVal(BigInt(scaledAmount), {
+    type: "i128",
+  });
+
+  const operation = contract.call("withdraw", depositorScVal, amountScVal);
+
+  const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(operation)
+    .setTimeout(30)
+    .build();
+
+  const simResponse = await server.simulateTransaction(tx);
+
+  if ((simResponse as any).error) {
+    throw new Error(`Simulation failed: ${(simResponse as any).error}`);
+  }
+
+  let assembleTransaction: Function;
+  if (typeof (StellarSdk.rpc as any).assembleTransaction === "function") {
+    assembleTransaction = (StellarSdk.rpc as any).assembleTransaction;
+  } else {
+    const rpc = await import("@stellar/stellar-sdk/rpc");
+    assembleTransaction = (rpc as any).assembleTransaction;
+  }
+
+  const assembledTx = assembleTransaction(tx, simResponse).build();
+  return assembledTx.toXDR();
+}
+
+/**
+ * Complete claim-principal flow: build, sign, submit, wait for confirmation.
+ * Returns real Soroban tx hash so it shows in user wallet and Stellar Expert.
+ */
+export async function executeWithdraw(
+  poolId: string,
+  amount: number,
+  userAddress: string,
+  walletType: WalletType
+): Promise<DepositResult> {
+  try {
+    const unsignedXdr = await buildWithdrawInvocation(poolId, amount, userAddress);
+    const signedXdr = await signTransaction(unsignedXdr, walletType, userAddress);
+    const txHash = await submitTransaction(signedXdr);
+    const confirmation = await waitForConfirmation(txHash);
+
+    if (!confirmation.success) {
+      return {
+        txHash,
+        success: false,
+        error: "Transaction executed but was not successful",
+      };
+    }
+
+    return { txHash, success: true };
+  } catch (error: any) {
+    return {
+      txHash: "",
+      success: false,
+      error: error?.message || "Unknown error occurred",
+    };
+  }
+}
+
+/**
  * Complete deposit flow: build, sign, submit, wait for confirmation
  */
 export async function executeDeposit(
