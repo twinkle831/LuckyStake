@@ -66,7 +66,7 @@ app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    network: process.env.STELLAR_NETWORK || "testnet",
+    network: process.env.STELLAR_NETWORK || "mainnet",
     version: "1.0.0",
   });
 });
@@ -105,7 +105,7 @@ server.listen(PORT, () => {
 ╔══════════════════════════════════════════╗
 ║       🎰 LuckyStake Backend API          ║
 ║  Port    : ${PORT}                           ║
-║  Network : ${(process.env.STELLAR_NETWORK || "testnet").padEnd(30)}║
+║  Network : ${(process.env.STELLAR_NETWORK || "mainnet").padEnd(30)}║
 ║  Env     : ${(process.env.NODE_ENV || "development").padEnd(30)}║
 ╚══════════════════════════════════════════╝
   `);

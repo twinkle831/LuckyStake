@@ -39,7 +39,7 @@ const DEFAULT: WalletState = {
   isConnected: false,
   isConnecting: false,
   balance: "0",
-  network: "Stellar Testnet",
+  network: "Stellar Mainnet",
   walletType: null,
 }
 
@@ -64,7 +64,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           address: saved.address,
           isConnected: true,
           balance: saved.balance ?? "0",
-          network: saved.network ?? "Stellar Testnet",
+          network: saved.network ?? "Stellar Mainnet",
           walletType: saved.walletType ?? null,
         })
 

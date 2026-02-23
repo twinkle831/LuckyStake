@@ -20,10 +20,10 @@ const { Address } = require("@stellar/stellar-base");
 // assembleTransaction and SorobanRpc.Api are both available from the top-level export
 
 const RPC_URL =
-  process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
+  process.env.STELLAR_RPC_URL || "https://soroban-mainnet.stellar.org";
 const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE ||
-  "Test SDF Network ; September 2015";
+  "Public Global Stellar Network ; September 2015";
 const BASE_FEE = 100;
 
 const CONTRACTS = {

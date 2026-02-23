@@ -8,7 +8,7 @@ const STELLAR_EXPERT_BASE = "https://stellar.expert/explorer";
  * Network segment for Stellar Expert: "testnet" or "public" (mainnet).
  */
 function getExplorerNetwork(): "testnet" | "public" {
-  const network = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet";
+  const network = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "mainnet";
   return network.toLowerCase() === "testnet" ? "testnet" : "public";
 }
 

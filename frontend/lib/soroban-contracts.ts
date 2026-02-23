@@ -14,13 +14,14 @@ const CONTRACT_ADDRESSES: Record<string, string> = {
   monthly: process.env.NEXT_PUBLIC_POOL_CONTRACT_MONTHLY || "",
 };
 
-// Network configuration
+// Network configuration: mainnet unless explicitly testnet
+const IS_TESTNET = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet";
 const RPC_URL =
   process.env.NEXT_PUBLIC_STELLAR_RPC_URL ||
-  "https://soroban-testnet.stellar.org";
+  (IS_TESTNET ? "https://soroban-testnet.stellar.org" : "https://soroban-mainnet.stellar.org");
 const NETWORK_PASSPHRASE =
   process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ||
-  "Test SDF Network ; September 2015";
+  (IS_TESTNET ? "Test SDF Network ; September 2015" : "Public Global Stellar Network ; September 2015");
 
 // XLM uses 7 decimal places (stroops)
 const XLM_DECIMALS = 7;
@@ -77,7 +78,18 @@ export async function buildDepositInvocation(
   });
 
   // Get account — handle both .sequenceNumber() method and .sequence property
-  const accountData = await server.getAccount(userAddress);
+  let accountData: any;
+  try {
+    accountData = await server.getAccount(userAddress);
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    if (/account not found|not found/i.test(msg)) {
+      throw new Error(
+        "This address has no account on Stellar Mainnet yet. Send a small amount of XLM to it first (e.g. from an exchange or another wallet), then try again."
+      );
+    }
+    throw e;
+  }
   const sequence: string =
     typeof (accountData as any).sequenceNumber === "function"
       ? (accountData as any).sequenceNumber()
@@ -310,7 +322,18 @@ export async function buildWithdrawInvocation(
     allowHttp: RPC_URL.startsWith("http://"),
   });
 
-  const accountData = await server.getAccount(userAddress);
+  let accountData: any;
+  try {
+    accountData = await server.getAccount(userAddress);
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    if (/account not found|not found/i.test(msg)) {
+      throw new Error(
+        "This address has no account on Stellar Mainnet yet. Fund it with XLM first, then try again."
+      );
+    }
+    throw e;
+  }
   const sequence: string =
     typeof (accountData as any).sequenceNumber === "function"
       ? (accountData as any).sequenceNumber()

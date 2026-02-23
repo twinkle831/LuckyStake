@@ -21,10 +21,10 @@ const {
 const HorizonServer = Horizon.Server;
 
 const HORIZON_URL =
-  process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org";
+  process.env.STELLAR_HORIZON_URL || "https://horizon.stellar.org";
 const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE ||
-  "Test SDF Network ; September 2015";
+  "Public Global Stellar Network ; September 2015";
 const BASE_FEE = 100;
 
 function getServer() {

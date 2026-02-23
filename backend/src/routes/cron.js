@@ -115,9 +115,9 @@ router.get("/contract-state", async (req, res, next) => {
     const { SorobanRpc, Contract, TransactionBuilder, Networks, Keypair, nativeToScVal } =
       require("@stellar/stellar-sdk");
 
-    const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
+    const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-mainnet.stellar.org";
     const PASSPHRASE =
-      process.env.STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
+      process.env.STELLAR_NETWORK_PASSPHRASE || "Public Global Stellar Network ; September 2015";
 
     const server = new SorobanRpc.Server(RPC_URL);
     const adminPub = process.env.ADMIN_SECRET_KEY

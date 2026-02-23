@@ -10,9 +10,9 @@ const https = require("https");
 const http = require("http");
 
 // Network configuration
-const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-testnet.stellar.org";
+const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-mainnet.stellar.org";
 const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE ||
-  "Test SDF Network ; September 2015";
+  "Public Global Stellar Network ; September 2015";
 
 // Contract address mapping (trimmed; load from env so backend/.env is used)
 function getEnvContract(key) {

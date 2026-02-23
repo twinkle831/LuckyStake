@@ -8,10 +8,11 @@ export function NetworkBanner() {
   const { isConnected, network } = useWallet()
   const [dismissed, setDismissed] = useState(false)
 
-  // Show banner when connected to testnet
-  const isTestnet = network === "Stellar Testnet"
+  const isTestnet =
+    typeof process.env.NEXT_PUBLIC_STELLAR_NETWORK !== "undefined" &&
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK?.toLowerCase() === "testnet"
 
-  if (!isConnected || dismissed || isTestnet) return null
+  if (!isConnected || dismissed) return null
 
   return (
     <div
@@ -30,7 +31,7 @@ export function NetworkBanner() {
         <span>
           {isTestnet
             ? "You are connected to Stellar Testnet. Transactions use test funds only."
-            : `Connected to ${network}`}
+            : "Connected to Stellar Mainnet"}
         </span>
       </div>
       <button

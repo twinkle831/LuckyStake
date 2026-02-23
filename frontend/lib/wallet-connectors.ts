@@ -75,8 +75,8 @@ export async function connectFreighter(): Promise<WalletConnection> {
     const address = (result as any).address as string;
     if (!address) throw { code: "UNKNOWN", message: "Freighter did not return an address." } as WalletError;
 
-    let networkPassphrase = "Test SDF Network ; September 2015";
-    let networkName = "TESTNET";
+    let networkPassphrase = "Public Global Stellar Network ; September 2015";
+    let networkName = "PUBLIC";
     try {
       const net = await getNetworkDetails();
       networkPassphrase = net?.networkPassphrase ?? networkPassphrase;
@@ -109,12 +109,12 @@ export async function connectXBull(): Promise<WalletConnection> {
     const address: string = await sdk.getPublicKey();
     if (!address) throw { code: "REJECTED", message: "xBull did not return an address." } as WalletError;
 
-    const isMainnet = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet";
+    const isTestnet = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet";
     return {
       address,
       walletType: "xbull",
-      network: isMainnet ? "Public Global Stellar Network ; September 2015" : "Test SDF Network ; September 2015",
-      networkName: isMainnet ? "PUBLIC" : "TESTNET",
+      network: isTestnet ? "Test SDF Network ; September 2015" : "Public Global Stellar Network ; September 2015",
+      networkName: isTestnet ? "TESTNET" : "PUBLIC",
     };
   } catch (err: any) {
     if (err?.code) throw err;

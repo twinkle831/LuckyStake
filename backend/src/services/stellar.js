@@ -6,7 +6,7 @@
 
 const StellarSdk = require("@stellar/stellar-sdk");
 
-const HORIZON_URL = process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org";
+const HORIZON_URL = process.env.STELLAR_HORIZON_URL || "https://horizon.stellar.org";
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 
 /**
