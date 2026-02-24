@@ -31,11 +31,7 @@ app.use(helmet());
 const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3000").split(",");
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || corsOrigins.includes(origin)) return callback(null, true);
-      callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
+    origin: "*"
   })
 );
 
