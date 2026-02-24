@@ -33,7 +33,8 @@ import {
   addPayout,
   type DepositEntry,
 } from "@/lib/deposit-store"
-import { pools, formatCountdown, type Pool } from "@/lib/pool-data"
+import { formatCountdown, type Pool } from "@/lib/pool-data"
+import { usePools } from "@/hooks/use-pools"
 import { stellarExpertTxUrl, isStellarTxHash } from "@/lib/stellar-explorer"
 import { useMyResults } from "@/hooks/use-my-results"
 import type { MyResultsData } from "@/hooks/use-my-results"
@@ -53,6 +54,7 @@ interface Props {
 
 export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
   const { address, balance, network, disconnect, refreshBalance } = useWallet()
+  const { pools } = usePools()
   const deposits = useDeposits()
   const [copied, setCopied] = useState(false)
   const [countdowns, setCountdowns] = useState<Record<string, string>>({})
@@ -100,7 +102,7 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [pools])
 
   function copyAddress() {
     if (!address) return
@@ -115,9 +117,9 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
   const netDeposited = getNetDeposited()
   const totalTickets = getTotalTickets()
 
-  const nextDraw = pools.reduce((closest, p) =>
+  const nextDraw = pools.length > 0 ? pools.reduce((closest, p) =>
     p.drawTime < closest.drawTime ? p : closest
-  )
+  ) : null
 
   // Pools user has deposited in
   const userPools = pools.filter((p) => getPoolBalance(p.id) > 0)
@@ -202,8 +204,8 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
         <StatCard
           icon={<Clock className="h-3.5 w-3.5" />}
           label="Next Draw"
-          value={countdowns[nextDraw.id] ?? "--"}
-          sublabel={nextDraw.name}
+          value={nextDraw ? (countdowns[nextDraw.id] ?? "--") : "--"}
+          sublabel={nextDraw?.name}
         />
       </div>
 
@@ -241,10 +243,16 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
                     </div>
                   </div>
 
-                  <div className="rounded-lg bg-secondary/30 p-3 mb-4">
+                  <div className="rounded-lg bg-secondary/30 p-3 mb-3">
                     <p className="text-xs text-muted-foreground">Deposited</p>
                     <p className="font-display text-base font-bold text-foreground">
                       {poolBal.toLocaleString()} XLM
+                    </p>
+                  </div>
+                  <div className="mb-4">
+                    <p className="text-xs text-muted-foreground">Prize pool</p>
+                    <p className="font-display text-sm font-semibold text-accent">
+                      {pool.prizeFormatted}
                     </p>
                   </div>
 

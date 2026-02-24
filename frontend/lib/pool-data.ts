@@ -18,23 +18,29 @@ export interface Pool {
   suppliedToBlend?: number
 }
 
-// Draw times are relative to now
-function futureDate(hours: number): Date {
-  return new Date(Date.now() + hours * 60 * 60 * 1000)
+// Default draw times when API is unavailable: next period from now
+function defaultDrawTime(days: number): Date {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  d.setHours(18, 0, 0, 0)
+  return d
 }
+
+// Minimum prize pool (XLM). Keep in sync with backend.
+const MIN_PRIZE_XLM = 100;
 
 export const pools: Pool[] = [
   {
     id: "weekly",
     name: "Weekly Pool",
     frequency: "Every 7 Days",
-    prize: 8920,
-    prizeFormatted: "8,920 XLM",
-    tvl: "1.8M XLM",
-    participants: 5847,
-    participantsFormatted: "5,847",
+    prize: MIN_PRIZE_XLM,
+    prizeFormatted: `${MIN_PRIZE_XLM} XLM`,
+    tvl: "0 XLM",
+    participants: 0,
+    participantsFormatted: "0",
     apy: "5.2%",
-    drawTime: futureDate(104),
+    drawTime: defaultDrawTime(7),
     minDeposit: 1,
     ticketRatio: "1 ticket per 1 XLM per day",
     color: "from-accent/30 to-accent/5",
@@ -45,13 +51,13 @@ export const pools: Pool[] = [
     id: "biweekly",
     name: "Biweekly Pool",
     frequency: "Every 15 Days",
-    prize: 18500,
-    prizeFormatted: "18,500 XLM",
-    tvl: "2.1M XLM",
-    participants: 7120,
-    participantsFormatted: "7,120",
+    prize: MIN_PRIZE_XLM,
+    prizeFormatted: `${MIN_PRIZE_XLM} XLM`,
+    tvl: "0 XLM",
+    participants: 0,
+    participantsFormatted: "0",
     apy: "5.4%",
-    drawTime: futureDate(260),
+    drawTime: defaultDrawTime(15),
     minDeposit: 1,
     ticketRatio: "1 ticket per 1 XLM per day",
     color: "from-emerald-500/20 to-emerald-500/5",
@@ -62,13 +68,13 @@ export const pools: Pool[] = [
     id: "monthly",
     name: "Monthly Pool",
     frequency: "Every 30 Days",
-    prize: 42500,
-    prizeFormatted: "42,500 XLM",
-    tvl: "2.4M XLM",
-    participants: 8912,
-    participantsFormatted: "8,912",
+    prize: MIN_PRIZE_XLM,
+    prizeFormatted: `${MIN_PRIZE_XLM} XLM`,
+    tvl: "0 XLM",
+    participants: 0,
+    participantsFormatted: "0",
     apy: "5.6%",
-    drawTime: futureDate(437),
+    drawTime: defaultDrawTime(30),
     minDeposit: 1,
     ticketRatio: "1 ticket per 1 XLM per day",
     color: "from-teal-500/20 to-teal-500/5",
@@ -91,10 +97,10 @@ export function calcWinProbability(
   pool: Pool,
   depositAmount: number
 ): string {
-  // Simplified: your tickets / (total tickets estimated from TVL + your tickets)
-  const tvlNum = parseFloat(pool.tvl.replace(/[$KM]/g, "")) * (pool.tvl.includes("M") ? 1_000_000 : 1_000)
-  const totalTickets = tvlNum + depositAmount
-  const prob = (tickets / totalTickets) * 100
+  const tvlNum = parseFloat(pool.tvl.replace(/[$,\sKMXLM]/gi, "")) || 0
+  const mult = pool.tvl.includes("M") ? 1_000_000 : pool.tvl.includes("K") ? 1_000 : 1
+  const totalTickets = Math.max(tvlNum * mult, 0) + depositAmount
+  const prob = totalTickets > 0 ? (tickets / totalTickets) * 100 : 0
   return prob < 0.01 ? "<0.01%" : `${prob.toFixed(2)}%`
 }
 

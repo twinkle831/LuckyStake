@@ -11,7 +11,8 @@ import {
   ChevronDown,
   Sparkles,
 } from "lucide-react"
-import { pools, formatCountdown } from "@/lib/pool-data"
+import { formatCountdown } from "@/lib/pool-data"
+import { usePools } from "@/hooks/use-pools"
 import {
   pastDraws,
   truncateAddr,
@@ -22,6 +23,7 @@ import {
 type FilterPool = "all" | "weekly" | "biweekly" | "monthly"
 
 export function DrawsSection() {
+  const { pools } = usePools()
   const [filter, setFilter] = useState<FilterPool>("all")
   const [countdowns, setCountdowns] = useState<Record<string, string>>({})
   const [expandedDraw, setExpandedDraw] = useState<string | null>(null)
@@ -37,16 +39,16 @@ export function DrawsSection() {
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [pools])
 
   const filtered = useMemo(() => {
     if (filter === "all") return pastDraws
     return pastDraws.filter((d) => d.poolId === filter)
   }, [filter])
 
-  const nextDraw = pools.reduce((closest, p) =>
+  const nextDraw = pools.length > 0 ? pools.reduce((closest, p) =>
     p.drawTime < closest.drawTime ? p : closest
-  )
+  ) : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,14 +63,14 @@ export function DrawsSection() {
             <div
               key={pool.id}
               className={`rounded-xl border border-border bg-card/50 p-5 backdrop-blur-sm transition-all ${
-                pool.id === nextDraw.id ? "ring-1 ring-accent/20" : ""
+                nextDraw && pool.id === nextDraw.id ? "ring-1 ring-accent/20" : ""
               }`}
             >
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-display text-base font-bold text-foreground">
                   {pool.name}
                 </h3>
-                {pool.id === nextDraw.id && (
+                {nextDraw && pool.id === nextDraw.id && (
                   <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                     Next
                   </span>

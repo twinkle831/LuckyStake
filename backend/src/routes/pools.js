@@ -2,19 +2,72 @@ const express = require("express");
 const router = express.Router();
 const store = require("../services/store");
 const auth = require("../middleware/auth");
+const poolContract = require("../services/pool-contract");
+
+const STROOPS_PER_XLM = 1e7;
+
+// Minimum prize pool (XLM) shown for all pools — dashboard and API use this floor
+const MIN_PRIZE_XLM = 100;
+function minPrizeXlm(type) {
+  return MIN_PRIZE_XLM;
+}
 
 /**
  * GET /api/pools
- * Get all pool stats (public). Includes suppliedToBlend (amount deployed to Blend).
+ * Get all pool stats (public). Enriched with on-chain prize fund, total deposits (TVL),
+ * participant count from store, and nextDraw for timer.
  */
-router.get("/", (req, res) => {
-  const pools = Array.from(store.pools.values()).map((pool) => ({
-    ...pool,
-    estimatedAPY: pool.type === "weekly" ? 5.8 : pool.type === "biweekly" ? 6.2 : 7.1,
-    currency: "XLM",
-    suppliedToBlend: pool.suppliedToBlend ?? 0,
-  }));
-  res.json({ pools });
+router.get("/", async (req, res, next) => {
+  try {
+    const poolTypes = ["weekly", "biweekly", "monthly"];
+    const pools = [];
+
+    for (const type of poolTypes) {
+      const pool = store.pools.get(type);
+      if (!pool) continue;
+
+      let prizeFundStroops = 0;
+      let totalDepositsStroops = 0;
+      try {
+        const contractId = poolContract.getContractId(type);
+        [prizeFundStroops, totalDepositsStroops] = await Promise.all([
+          poolContract.getPrizeFund(contractId),
+          poolContract.getTotalDeposits(contractId),
+        ]);
+      } catch (e) {
+        // Contract not initialized or RPC error — use store/zeros
+      }
+
+      const prizeXlm = prizeFundStroops / STROOPS_PER_XLM;
+      const totalDepositsXlm = totalDepositsStroops / STROOPS_PER_XLM;
+      const effectivePrizeXlm = Math.max(prizeXlm, minPrizeXlm(type));
+
+      const activeDeposits = Array.from(store.deposits.values()).filter(
+        (d) => d.poolType === type && !d.withdrawnAt
+      );
+      const participants = new Set(activeDeposits.map((d) => d.publicKey)).size;
+
+      const estimatedAPY = type === "weekly" ? 5.8 : type === "biweekly" ? 6.2 : 7.1;
+
+      pools.push({
+        type: pool.type,
+        totalDeposited: pool.totalDeposited ?? 0,
+        yieldAccrued: pool.yieldAccrued ?? 0,
+        participants,
+        nextDraw: pool.nextDraw || store.nextDrawTime(type),
+        suppliedToBlend: pool.suppliedToBlend ?? 0,
+        estimatedAPY,
+        currency: "XLM",
+        ticketRatio: "1 ticket per 1 XLM per day",
+        prizeFundXlm: effectivePrizeXlm,
+        totalDepositsXlm: totalDepositsXlm,
+      });
+    }
+
+    res.json({ pools });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**

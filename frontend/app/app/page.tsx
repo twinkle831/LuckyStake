@@ -17,7 +17,8 @@ import {
   DashboardSkeleton,
   DrawsSkeleton,
 } from "@/components/skeletons"
-import { pools, type Pool } from "@/lib/pool-data"
+import { type Pool } from "@/lib/pool-data"
+import { usePools } from "@/hooks/use-pools"
 import { Wallet, ArrowRight, LayoutGrid, PieChart, Trophy } from "lucide-react"
 
 export type Tab = "pools" | "dashboard" | "draws"
@@ -35,6 +36,7 @@ function getToken(): string | null {
 function AppContent() {
   const { isConnected } = useWallet()
   const { toast } = useToast()
+  const { pools, loading: poolsLoading } = usePools()
   const [tab, setTab] = useState<Tab>("pools")
   const [walletModalOpen, setWalletModalOpen] = useState(false)
   const [depositPool, setDepositPool] = useState<Pool | null>(null)
@@ -43,14 +45,9 @@ function AppContent() {
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
   const [detailPool, setDetailPool] = useState<Pool | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [claimableByPool, setClaimableByPool] = useState<Record<string, boolean>>({})
 
-  // Simulate initial data fetch
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 1200)
-    return () => clearTimeout(t)
-  }, [])
+  const loading = poolsLoading
 
   // Fetch claimable (can claim principal after draw) per pool when connected
   useEffect(() => {

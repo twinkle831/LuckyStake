@@ -151,10 +151,18 @@ async function getSuppliedToBlend(contractId) {
 }
 
 /**
- * Get prize fund from contract.
+ * Get prize fund from contract (stroops).
  */
 async function getPrizeFund(contractId) {
   const v = await simulateRead(contractId, "get_prize_fund", []);
+  return v ? Number(v) : 0;
+}
+
+/**
+ * Get total deposits from contract (stroops).
+ */
+async function getTotalDeposits(contractId) {
+  const v = await simulateRead(contractId, "get_total_deposits", []);
   return v ? Number(v) : 0;
 }
 
@@ -246,6 +254,7 @@ module.exports = {
   simulateRead,
   getSuppliedToBlend,
   getPrizeFund,
+  getTotalDeposits,
   harvestYield,
   withdrawFromBlend,
   executeDraw,

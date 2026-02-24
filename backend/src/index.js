@@ -61,6 +61,15 @@ app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
+// ─── Root (for Render / browser) ──────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "LuckyStake API",
+    docs: "Use /api/pools, /api/auth, /api/deposits, etc.",
+    health: "/health",
+  });
+});
+
 // ─── Health Check ────────────────────────────────────────────────────────────
 app.get("/health", (req, res) => {
   res.json({
