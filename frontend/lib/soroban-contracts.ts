@@ -18,7 +18,7 @@ const CONTRACT_ADDRESSES: Record<string, string> = {
 const IS_TESTNET = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "testnet";
 const RPC_URL =
   process.env.NEXT_PUBLIC_STELLAR_RPC_URL ||
-  (IS_TESTNET ? "https://soroban-testnet.stellar.org" : "https://soroban-mainnet.stellar.org");
+  (IS_TESTNET ? "https://soroban-testnet.stellar.org" : "https://mainnet.sorobanrpc.com");
 const NETWORK_PASSPHRASE =
   process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ||
   (IS_TESTNET ? "Test SDF Network ; September 2015" : "Public Global Stellar Network ; September 2015");
@@ -58,6 +58,30 @@ export function getContractAddress(poolId: string): string {
   return address;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+/**
+ * Get account sequence from backend (Horizon). Same source as balance — avoids Soroban RPC "account not found" when Horizon has the account.
+ */
+async function getAccountSequenceFromBackend(userAddress: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/wallet/${userAddress}`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 404
+        ? "Account not found. Ensure your wallet is on Mainnet and has received XLM at least once."
+        : `Failed to load account: ${res.status}`
+    );
+  }
+  const data = await res.json();
+  const sequence = data.sequence != null ? String(data.sequence) : null;
+  if (sequence == null || sequence === "0") {
+    throw new Error(
+      "Account not found on Mainnet. Send 1–2 XLM to your wallet address once (from an exchange or another wallet) to activate it."
+    );
+  }
+  return sequence;
+}
+
 /**
  * Build and simulate deposit transaction, return assembled XDR (unsigned)
  */
@@ -71,30 +95,11 @@ export async function buildDepositInvocation(
   const contractAddress = getContractAddress(poolId);
   const scaledAmount = scaleAmount(amount);
 
-  // FIX: use StellarSdk.rpc.Server instead of StellarSdk.SorobanRpc.Server
-  // SorobanRpc was renamed to rpc in newer versions of the SDK
   const server = new StellarSdk.rpc.Server(RPC_URL, {
     allowHttp: RPC_URL.startsWith("http://"),
   });
 
-  // Get account — handle both .sequenceNumber() method and .sequence property
-  let accountData: any;
-  try {
-    accountData = await server.getAccount(userAddress);
-  } catch (e: any) {
-    const msg = e?.message ?? String(e);
-    if (/account not found|not found/i.test(msg)) {
-      throw new Error(
-        "This address has no account on Stellar Mainnet yet. Send a small amount of XLM to it first (e.g. from an exchange or another wallet), then try again."
-      );
-    }
-    throw e;
-  }
-  const sequence: string =
-    typeof (accountData as any).sequenceNumber === "function"
-      ? (accountData as any).sequenceNumber()
-      : (accountData as any).sequence;
-
+  const sequence = await getAccountSequenceFromBackend(userAddress);
   const sourceAccount = new StellarSdk.Account(userAddress, sequence);
 
   const contract = new StellarSdk.Contract(contractAddress);
@@ -117,9 +122,14 @@ export async function buildDepositInvocation(
   // Simulate
   const simResponse = await server.simulateTransaction(tx);
 
-  // Check simulation error via shape (not helper function — unreliable across builds)
   if ((simResponse as any).error) {
-    throw new Error(`Simulation failed: ${(simResponse as any).error}`);
+    const errStr = String((simResponse as any).error);
+    if (/UnreachableCodeReached|InvalidAction|WasmVm/i.test(errStr) && /deposit/i.test(errStr)) {
+      throw new Error(
+        "Deposit simulation failed: the pool contract may not be initialized, or it uses a different token than you have. Ask the pool admin to run initialize(admin, token, period_days) and ensure you hold the pool’s token (e.g. native XLM)."
+      );
+    }
+    throw new Error(`Simulation failed: ${errStr}`);
   }
 
   // FIX: assembleTransaction: try StellarSdk.rpc first, then /rpc subpath
@@ -322,23 +332,7 @@ export async function buildWithdrawInvocation(
     allowHttp: RPC_URL.startsWith("http://"),
   });
 
-  let accountData: any;
-  try {
-    accountData = await server.getAccount(userAddress);
-  } catch (e: any) {
-    const msg = e?.message ?? String(e);
-    if (/account not found|not found/i.test(msg)) {
-      throw new Error(
-        "This address has no account on Stellar Mainnet yet. Fund it with XLM first, then try again."
-      );
-    }
-    throw e;
-  }
-  const sequence: string =
-    typeof (accountData as any).sequenceNumber === "function"
-      ? (accountData as any).sequenceNumber()
-      : (accountData as any).sequence;
-
+  const sequence = await getAccountSequenceFromBackend(userAddress);
   const sourceAccount = new StellarSdk.Account(userAddress, sequence);
   const contract = new StellarSdk.Contract(contractAddress);
 

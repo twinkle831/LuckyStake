@@ -10,7 +10,7 @@ const https = require("https");
 const http = require("http");
 
 // Network configuration
-const RPC_URL = process.env.STELLAR_RPC_URL || "https://soroban-mainnet.stellar.org";
+const RPC_URL = process.env.STELLAR_RPC_URL || "https://mainnet.sorobanrpc.com";
 const NETWORK_PASSPHRASE = process.env.STELLAR_NETWORK_PASSPHRASE ||
   "Public Global Stellar Network ; September 2015";
 

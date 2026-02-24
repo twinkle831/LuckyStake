@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
-  const { isConnected, balance, address, walletType, token, setConnection } = useWallet()
+  const { isConnected, balance, address, walletType, token, setConnection, refreshBalance } = useWallet()
   const [amount, setAmount] = useState("")
   const [privacyMode, setPrivacyMode] = useState(false)
   const [isDepositing, setIsDepositing] = useState(false)
@@ -38,8 +38,11 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
     [tickets, pool, numAmount]
   )
 
+  // Reserve 1 XLM for fees and minimum reserve so the transaction can succeed on-chain
+  const MIN_RESERVE_XLM = 1
   const balanceNum = parseFloat(balance.replace(/,/g, "")) || 0
-  const isValid = numAmount >= (pool?.minDeposit ?? 0) && numAmount <= balanceNum
+  const effectiveBalance = Math.max(0, balanceNum - MIN_RESERVE_XLM)
+  const isValid = numAmount >= (pool?.minDeposit ?? 0) && numAmount <= effectiveBalance
 
   function handleClose() {
     setAmount("")
@@ -243,7 +246,7 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                   </button>
                 ))}
                 <button
-                  onClick={() => setAmount(String(balanceNum))}
+                  onClick={() => setAmount(String(effectiveBalance))}
                   className="rounded-lg border border-accent/30 px-3 py-1 text-xs text-accent transition-colors hover:bg-accent/10"
                 >
                   Max
@@ -314,10 +317,26 @@ export function DepositModal({ pool, open, onClose, onSuccess }: Props) {
                 Minimum deposit is {pool.minDeposit} XLM
               </div>
             )}
-            {numAmount > balanceNum && (
+            {balanceNum === 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Balance is 0 or couldn&apos;t be loaded. Ensure backend is running and using mainnet.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refreshBalance()}
+                  className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Refresh balance
+                </button>
+              </div>
+            )}
+            {balanceNum > 0 && numAmount > effectiveBalance && (
               <div className="mt-3 flex items-center gap-2 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" />
-                Insufficient balance
+                Insufficient balance (leave at least {MIN_RESERVE_XLM} XLM for fees)
               </div>
             )}
 

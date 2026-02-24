@@ -9,18 +9,15 @@ const {
   TransactionBuilder,
   SorobanRpc,
   Keypair,
-  Networks,
-  xdr,
-  assembleTransaction, // ✅ directly from top-level in v12
   nativeToScVal,
 } = require("@stellar/stellar-sdk");
-const { Address } = require("@stellar/stellar-base");
+const { Address, Asset } = require("@stellar/stellar-base");
 
-// ✅ No need for @stellar/stellar-base or internal subpath imports
-// assembleTransaction and SorobanRpc.Api are both available from the top-level export
+// assembleTransaction lives on the rpc submodule (SorobanRpc in v12)
+const assembleTransaction = SorobanRpc.assembleTransaction || require("@stellar/stellar-sdk/rpc").assembleTransaction;
 
 const RPC_URL =
-  process.env.STELLAR_RPC_URL || "https://soroban-mainnet.stellar.org";
+  process.env.STELLAR_RPC_URL || "https://mainnet.sorobanrpc.com";
 const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE ||
   "Public Global Stellar Network ; September 2015";
@@ -120,7 +117,6 @@ async function invoke(contractId, method, args = []) {
     throw new Error(`Simulate ${method} failed: ${JSON.stringify(sim)}`);
   }
 
-  // ✅ assembleTransaction imported directly from top-level
   tx = assembleTransaction(tx, sim).build();
   tx.sign(admin);
 
@@ -215,6 +211,36 @@ function getContractId(poolType) {
   return id;
 }
 
+/**
+ * Get the native XLM token contract id for the current network (mainnet/testnet).
+ * Used when initializing pool contracts so deposits use XLM.
+ */
+function getNativeXlmContractId() {
+  return Asset.native().contractId(NETWORK_PASSPHRASE);
+}
+
+/**
+ * Initialize a pool contract: set admin, native XLM token, and period_days.
+ * Call once per pool after deployment. Requires ADMIN_SECRET_KEY.
+ * @param {string} contractId - Pool contract id (e.g. CONTRACTS.weekly)
+ * @param {number} periodDays - 7, 15, or 30
+ * @returns {Promise<{hash: string, status: string}>}
+ */
+async function initializePool(contractId, periodDays) {
+  if (![7, 15, 30].includes(periodDays)) {
+    throw new Error("periodDays must be 7, 15, or 30");
+  }
+  const admin = getAdminKeypair();
+  const tokenId = getNativeXlmContractId();
+  const adminAddr = Address.fromString(admin.publicKey());
+  const tokenAddr = Address.fromString(tokenId);
+  return invoke(contractId, "initialize", [
+    adminAddr.toScVal(),
+    tokenAddr.toScVal(),
+    nativeToScVal(periodDays, { type: "u32" }),
+  ]);
+}
+
 module.exports = {
   getServer,
   simulateRead,
@@ -225,5 +251,7 @@ module.exports = {
   executeDraw,
   getUserBalance,
   getContractId,
+  getNativeXlmContractId,
+  initializePool,
   scValI128,
 };

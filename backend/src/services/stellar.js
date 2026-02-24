@@ -19,17 +19,23 @@ async function getAccountDetails(publicKey) {
     const account = await server.accounts().accountId(publicKey).call();
     const nativeBalance = account.balances.find((b) => b.asset_type === "native");
     const xlmBalance = nativeBalance ? nativeBalance.balance : "0";
+    // sequence is required for building transactions; Horizon returns it as string
+    const sequence =
+      typeof account.sequenceNumber === "function"
+        ? account.sequenceNumber()
+        : String(account.sequence ?? "0");
     return {
       id: account.id,
       accountId: account.id,
       xlmBalance,
+      sequence,
       subentryCount: account.subentry_count,
       thresholds: account.thresholds,
       signers: account.signers,
     };
   } catch (err) {
     if (err.response && err.response.status === 404) {
-      return { accountId: publicKey, xlmBalance: "0", subentryCount: 0 };
+      return { accountId: publicKey, xlmBalance: "0", sequence: null, subentryCount: 0 };
     }
     throw err;
   }

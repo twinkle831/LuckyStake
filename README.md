@@ -46,16 +46,16 @@ Create `backend/.env` (copy from below or from your existing setup). **Do not co
 JWT_SECRET=your-jwt-secret-min-32-chars
 PORT=4000
 STELLAR_NETWORK=mainnet
-STELLAR_RPC_URL=https://soroban-mainnet.stellar.org
+STELLAR_RPC_URL=https://mainnet.sorobanrpc.com
 STELLAR_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
 STELLAR_HORIZON_URL=https://horizon.stellar.org
 
 # Pool contracts (mainnet)
-POOL_CONTRACT_WEEKLY=CCQGF2HFSPVIVCHHQJUS77GRP6PQI7BJZ2UYJMBGHIEZ72J235MZAKS4
-POOL_CONTRACT_BIWEEKLY=CCZPV44WKSHPMGAADPA3BJGGWWGBRIXIQDLICSNV3CE3XM6DKLJGSTSR
-POOL_CONTRACT_MONTHLY=CBPQUON5Y5P3LYQRPGSSO3KNH3HLOGM4RKJSKH6JJOQVSWSRQUIOPX72
+POOL_CONTRACT_WEEKLY=CCEQRJQ4OLVLRRUS5SLJKGXDILYKISDV43HSBNP2QDUSIJ7ITWLHD73I
+POOL_CONTRACT_BIWEEKLY=CCITIDSTLZHHGWRIAJK6JAVLMMYSJ7GUDFWOS4MNCILLZQOFWBT63DFB
+POOL_CONTRACT_MONTHLY=CDAPP7TW2CU4D75KM6HL2IJPQYGDXR77O7GSIRGX7H2GNBRNY6J4LVZY
 
-# For draws (cron)
+# For draws (cron). Admin address: GDPG33X6WH57VET5AQJJCMHWVBCNJU5VOVARUEWA77OLNHXGQQLT44E6
 ADMIN_SECRET_KEY=S...your-admin-secret...
 ADMIN_KEY=your-cron-secret
 ```
@@ -72,7 +72,7 @@ Create `frontend/.env.local` (or copy `frontend/.env.example` to `.env.local`). 
 NEXT_PUBLIC_API_URL=http://localhost:4000
 NEXT_PUBLIC_STELLAR_NETWORK=mainnet
 NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
-NEXT_PUBLIC_STELLAR_RPC_URL=https://soroban-mainnet.stellar.org
+NEXT_PUBLIC_STELLAR_RPC_URL=https://mainnet.sorobanrpc.com
 NEXT_PUBLIC_POOL_CONTRACT_WEEKLY=CCQGF2HFSPVIVCHHQJUS77GRP6PQI7BJZ2UYJMBGHIEZ72J235MZAKS4
 NEXT_PUBLIC_POOL_CONTRACT_BIWEEKLY=CCZPV44WKSHPMGAADPA3BJGGWWGBRIXIQDLICSNV3CE3XM6DKLJGSTSR
 NEXT_PUBLIC_POOL_CONTRACT_MONTHLY=CBPQUON5Y5P3LYQRPGSSO3KNH3HLOGM4RKJSKH6JJOQVSWSRQUIOPX72
@@ -130,6 +130,14 @@ Deploy **backend first**, then **frontend**, so the frontend can point to the li
 3. Deploy. The app uses mainnet by default.
 
 Full step-by-step: **[frontend/VERCEL_DEPLOY.md](frontend/VERCEL_DEPLOY.md)**.
+
+### Initialize pool contracts (one-time)
+
+If you deployed the pool contracts but **deposits fail with "pool contract may not be initialized"**, the contracts need to be initialized with admin, native XLM token, and period:
+
+1. In **backend/.env**, set `ADMIN_SECRET_KEY` to the Stellar **secret key** (S...) for your admin address (e.g. `GDPG33X6WH57VET5AQJJCMHWVBCNJU5VOVARUEWA77OLNHXGQQLT44E6`).
+2. From the **backend** folder run: **`npm run init-pools`**
+3. This calls `initialize(admin, native_xlm_token, period_days)` on the weekly (7), biweekly (15), and monthly (30) pool contracts. After that, deposits should work.
 
 ### After deploy
 
