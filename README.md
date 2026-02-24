@@ -127,9 +127,7 @@ Deploy **backend first**, then **frontend**, so the frontend can point to the li
 
 1. In [Vercel](https://vercel.com), import the repo and set **Root Directory** to `LuckyStake/frontend` (or `frontend`).
 2. In **Settings → Environment Variables**, add the vars from **1.2** and set `NEXT_PUBLIC_API_URL` to your **Render backend URL** (no trailing slash).
-3. Deploy. The app uses mainnet by default.
 
-Full step-by-step: **[frontend/VERCEL_DEPLOY.md](frontend/VERCEL_DEPLOY.md)**.
 
 ### Initialize pool contracts (one-time)
 
@@ -166,10 +164,4 @@ If you deployed the pool contracts but **deposits fail with "pool contract may n
 | Contract tests | `cd contracts && cargo test` |
 | Start backend | `cd backend && npm install && node src/index.js` |
 | Start frontend | `cd frontend && npm install && npm run dev` |
-| Trigger draw | `curl -X POST "http://localhost:4000/api/cron/run-draw-checks" -H "x-admin-key: YOUR_ADMIN_KEY"` |
 
----
-
-## License
-
-Private / as per your project terms.
