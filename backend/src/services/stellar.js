@@ -6,6 +6,7 @@
 
 const StellarSdk = require("@stellar/stellar-sdk");
 
+// Use horizon.stellar.org for mainnet; Horizon is what returns your XLM balance for the wallet UI
 const HORIZON_URL = process.env.STELLAR_HORIZON_URL || "https://horizon.stellar.org";
 const server = new StellarSdk.Horizon.Server(HORIZON_URL);
 

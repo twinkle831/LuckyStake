@@ -150,8 +150,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           })
           : "0"
         setWallet((prev) => ({ ...prev, balance: xlmBalance }))
+      } else {
+        // Backend error (e.g. Horizon down) — keep previous or show 0 so UI can show "couldn't load"
+        setWallet((prev) => ({ ...prev, balance: "0" }))
       }
-    } catch { /* ignore */ }
+    } catch {
+      // Network error (backend not running or CORS) — show 0 so UI shows "couldn't load"
+      setWallet((prev) => ({ ...prev, balance: "0" }))
+    }
   }, [wallet.address])
 
   const disconnect = useCallback(() => {

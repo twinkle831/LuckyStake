@@ -7,7 +7,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest",
-    "init-pools": "node scripts/init-pools.js"
+    "init-pools": "node scripts/init-pools.js",
+    "query-pools": "node scripts/query-pool-state.js"
   },
   "dependencies": {
     "@stellar/stellar-base": "^14.0.4",
