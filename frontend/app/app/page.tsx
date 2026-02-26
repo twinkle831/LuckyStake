@@ -8,6 +8,7 @@ import { WithdrawModal } from "@/components/withdraw-modal"
 import { UserDashboard } from "@/components/user-dashboard"
 import { ConnectWalletModal } from "@/components/connect-wallet-modal"
 import { AppNavbar } from "@/components/app-navbar"
+import { AiAgentChat } from "@/components/ai-agent-chat"
 import { PoolDetailPanel } from "@/components/pool-detail-panel"
 import { DrawsSection } from "@/components/draws-section"
 import { NetworkBanner } from "@/components/network-banner"
@@ -19,7 +20,7 @@ import {
 } from "@/components/skeletons"
 import { type Pool } from "@/lib/pool-data"
 import { usePools } from "@/hooks/use-pools"
-import { Wallet, ArrowRight, LayoutGrid, PieChart, Trophy } from "lucide-react"
+import { Wallet, ArrowRight, LayoutGrid, PieChart, Trophy, Bot } from "lucide-react"
 
 export type Tab = "pools" | "dashboard" | "draws"
 
@@ -45,6 +46,7 @@ function AppContent() {
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
   const [detailPool, setDetailPool] = useState<Pool | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(false)
   const [claimableByPool, setClaimableByPool] = useState<Record<string, boolean>>({})
 
   const loading = poolsLoading
@@ -110,6 +112,7 @@ function AppContent() {
         onConnectWallet={() => setWalletModalOpen(true)}
         activeTab={tab}
         onTabChange={setTab}
+        onOpenAiAgent={() => setAgentOpen(true)}
       />
 
       {/* Background accent */}
@@ -209,6 +212,12 @@ function AppContent() {
           active={tab === "draws"}
           onClick={() => setTab("draws")}
         />
+        <MobileNavItem
+          icon={<Bot className="h-5 w-5" />}
+          label="AI Agent"
+          active={agentOpen}
+          onClick={() => setAgentOpen(true)}
+        />
       </nav>
 
       {/* Modals & Panels */}
@@ -251,6 +260,7 @@ function AppContent() {
         }}
         claimableByPool={claimableByPool}
       />
+      <AiAgentChat open={agentOpen} onClose={() => setAgentOpen(false)} />
     </div>
   )
 }

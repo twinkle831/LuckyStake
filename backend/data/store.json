@@ -10,9 +10,9 @@
     "GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ": {
       "publicKey": "GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ",
       "joinedAt": "2026-02-23T13:11:24.483Z",
-      "totalDeposited": 10,
-      "tickets": 70,
-      "lastLogin": "2026-02-23T20:40:13.863Z"
+      "totalDeposited": 11,
+      "tickets": 77,
+      "lastLogin": "2026-02-24T08:12:48.005Z"
     }
   },
   "challenges": {},
@@ -71,12 +71,23 @@
       "depositedAt": "2026-02-23T13:12:08.000Z",
       "withdrawnAt": null,
       "ledger": 1170676
+    },
+    "7dbca834-94fe-4b79-a86d-12e9231f7257": {
+      "id": "7dbca834-94fe-4b79-a86d-12e9231f7257",
+      "publicKey": "GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ",
+      "poolType": "weekly",
+      "amount": 1,
+      "txHash": "b827cd46e3d5db1f6ab7e7f35a9b9223b528881e96582bd2d8824e38bd96c630",
+      "tickets": 7,
+      "depositedAt": "2026-02-24T08:13:49.000Z",
+      "withdrawnAt": null,
+      "ledger": 61375040
     }
   },
   "pools": {
     "weekly": {
       "type": "weekly",
-      "totalDeposited": 36,
+      "totalDeposited": 37,
       "yieldAccrued": 0,
       "participants": 2,
       "nextDraw": "2026-03-02T12:30:00.000Z",

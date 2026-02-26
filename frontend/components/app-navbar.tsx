@@ -1,7 +1,7 @@
 "use client"
 
 import { useWallet, truncateAddress } from "@/context/wallet-context"
-import { Wallet, ChevronDown, LogOut, Copy, CheckCircle2 } from "lucide-react"
+import { Wallet, ChevronDown, LogOut, Copy, CheckCircle2, Bot } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 
@@ -11,6 +11,7 @@ interface Props {
   onConnectWallet: () => void
   activeTab: Tab
   onTabChange: (tab: Tab) => void
+  onOpenAiAgent?: () => void
 }
 
 const tabs: { key: Tab; label: string }[] = [
@@ -19,7 +20,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: "draws", label: "Draws" },
 ]
 
-export function AppNavbar({ onConnectWallet, activeTab, onTabChange }: Props) {
+export function AppNavbar({ onConnectWallet, activeTab, onTabChange, onOpenAiAgent }: Props) {
   const { isConnected, address, balance, disconnect } = useWallet()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -88,7 +89,18 @@ export function AppNavbar({ onConnectWallet, activeTab, onTabChange }: Props) {
           ))}
         </div>
 
-        {/* Wallet */}
+        {/* AI Agent + Wallet */}
+        <div className="flex items-center gap-2">
+          {onOpenAiAgent && (
+            <button
+              onClick={onOpenAiAgent}
+              className="flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2 text-sm transition-all hover:bg-accent/15 hover:border-accent/40"
+              title="AI Agent — set-and-forget strategy"
+            >
+              <Bot className="h-4 w-4 text-accent" />
+              <span className="hidden sm:inline text-foreground">AI Agent</span>
+            </button>
+          )}
         <div className="flex items-center gap-3">
           {isConnected && address ? (
             <div className="relative" ref={dropdownRef}>
@@ -158,6 +170,7 @@ export function AppNavbar({ onConnectWallet, activeTab, onTabChange }: Props) {
               Connect Wallet
             </button>
           )}
+        </div>
         </div>
       </nav>
     </header>

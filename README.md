@@ -10,7 +10,8 @@ A decentralized savings platform on **Stellar** where users deposit into daily, 
 |--------|-------------|
 | **`contracts/`** | Soroban (Rust) pool contracts: deposit, withdraw, execute_draw, Blend integration |
 | **`backend/`** | Node.js API: auth, deposit records, cron (draw + harvest), payout/claim recording |
-| **`frontend/`** | Next.js app: connect wallet, deposit, claim principal, dashboard, transaction history |
+| **`agent-api/`** | FastAPI: AI Agent for set-and-forget strategy (lock time, gas tolerance, pool preference, allocation) |
+| **`frontend/`** | Next.js app: connect wallet, deposit, claim principal, dashboard, AI Agent chat, transaction history |
 
 ---
 
@@ -24,12 +25,12 @@ A decentralized savings platform on **Stellar** where users deposit into daily, 
 
 ## Flow: Test locally → Deploy
 
-1. **Set env** – Backend: `backend/.env`. Frontend: `frontend/.env.local` (copy from `frontend/.env.example`).
-2. **Run locally** – Start backend (`cd backend && node src/index.js`), then frontend (`cd frontend && npm run dev`).
-3. **Test** – Open http://localhost:3000, connect wallet, deposit, (trigger draw if needed), claim principal. Confirm tx hashes and balances.
-4. **Deploy** – Deploy backend to your host; deploy frontend to Vercel with the same env (and `NEXT_PUBLIC_API_URL` = your backend URL).
+1. **Set env** – Backend: `backend/.env`. Agent API: `agent-api/.env` (optional). Frontend: `frontend/.env.local` (copy from `frontend/.env.example`).
+2. **Run locally** – Start backend, then agent-api, then frontend (see [SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)).
+3. **Test** – Open http://localhost:3000, connect wallet, deposit, use AI Agent for strategy, (trigger draw if needed), claim principal.
+4. **Deploy** – Backend → Agent API → Frontend; set env per [SETUP_WORKFLOW.md](SETUP_WORKFLOW.md).
 
-Details are below.
+**Full setup and env reference:** **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** — what to put in each `.env` and how to run all three services.
 
 ---
 
@@ -80,7 +81,7 @@ NEXT_PUBLIC_POOL_CONTRACT_MONTHLY=CBPQUON5Y5P3LYQRPGSSO3KNH3HLOGM4RKJSKH6JJOQVSW
 
 For **testnet**, use `NEXT_PUBLIC_STELLAR_NETWORK=testnet` and testnet RPC/passphrase/contract IDs.
 
-### 1.3 Run backend and frontend
+### 1.3 Run backend, agent-api, and frontend
 
 **Terminal 1 – backend**
 
@@ -92,7 +93,17 @@ node src/index.js
 
 Backend: **http://localhost:4000**
 
-**Terminal 2 – frontend**
+**Terminal 2 – agent-api (optional; for AI Agent)**
+
+```bash
+cd agent-api
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Agent API: **http://localhost:8000**. If you skip this, the AI Agent in the frontend will not work until the agent-api is running.
+
+**Terminal 3 – frontend**
 
 ```bash
 cd frontend
@@ -148,9 +159,11 @@ If you deployed the pool contracts but **deposits fail with "pool contract may n
 
 | File | Purpose |
 |------|--------|
+| **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** | **Full setup: what to put in each .env, run order, deploy** |
 | [TEST_COMMANDS.md](TEST_COMMANDS.md) | Contract tests (Rust), backend/frontend commands, E2E test flow, troubleshooting |
 | [backend/RENDER_DEPLOY.md](backend/RENDER_DEPLOY.md) | Deploy backend on Render (mainnet) |
 | [frontend/VERCEL_DEPLOY.md](frontend/VERCEL_DEPLOY.md) | Deploy frontend on Vercel (mainnet) |
+| [agent-api/README.md](agent-api/README.md) | Agent API endpoints, env, profit logic |
 | [NEXT_STEPS.md](NEXT_STEPS.md) | Integration checklist (if present) |
 | [backend/CRON_README.md](backend/CRON_README.md) | Cron setup for draws |
 | [contracts/](contracts/) | Contract build, test, deploy (see contracts’ README/QUICK_START) |
@@ -163,5 +176,8 @@ If you deployed the pool contracts but **deposits fail with "pool contract may n
 |------|--------|
 | Contract tests | `cd contracts && cargo test` |
 | Start backend | `cd backend && npm install && node src/index.js` |
+| Start agent-api | `cd agent-api && pip install -r requirements.txt && uvicorn app.main:app --reload --port 8000` |
 | Start frontend | `cd frontend && npm install && npm run dev` |
+
+See [SETUP_WORKFLOW.md](SETUP_WORKFLOW.md) for env vars and full workflow.
 
