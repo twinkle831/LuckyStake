@@ -31,6 +31,7 @@ pub enum DataKey {
     DrawNonce,
     BlendPool,
     SuppliedToBlend,
+    ReceiptToken,
 }
 
 #[contracttype]
@@ -47,13 +48,13 @@ pub struct LuckyStakePool;
 impl LuckyStakePool {
     pub fn initialize(env: Env, admin: Address, token: Address, period_days: u32) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("init");
+            panic!("already initialised");
         }
         admin.require_auth();
 
         assert!(
             period_days == 7 || period_days == 15 || period_days == 30,
-            "period"
+            "period_days must be 7, 15, or 30"
         );
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -70,59 +71,78 @@ impl LuckyStakePool {
 
     pub fn deposit(env: Env, depositor: Address, amount: i128) {
         depositor.require_auth();
-        assert!(amount > 0, "amt");
+        assert!(amount > 0, "deposit amount must be greater than zero");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let token_client = token::Client::new(&env, &token_id);
-        token_client.transfer(&depositor, &env.current_contract_address(), &amount);
+        let self_addr = env.current_contract_address();
 
+        // 1. Transfer from User to Contract
+        token_client.transfer(&depositor, &self_addr, &amount);
+
+        // 2. Automatically Supply to Blend (if pool is configured)
+        if let Some(blend_pool) = env.storage().instance().get::<_, Address>(&DataKey::BlendPool) {
+            let expiration = env.ledger().sequence() + 50_000;
+            token_client.approve(&self_addr, &blend_pool, &amount, &expiration);
+
+            let request = BlendRequest {
+                request_type: 0u32, // Supply
+                address: token_id.clone(),
+                amount,
+            };
+            let mut requests: Vec<BlendRequest> = Vec::new(&env);
+            requests.push_back(request);
+
+            let args = soroban_sdk::vec![
+                &env,
+                self_addr.clone().into_val(&env),
+                self_addr.clone().into_val(&env),
+                self_addr.clone().into_val(&env),
+                requests.into_val(&env),
+            ];
+
+            // Atomic invocation to Blend
+            env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit_with_allowance"), args);
+
+            // Emit a "Token Receipt" event for the user to verify on the explorer
+            env.events().publish(
+                (Symbol::new(&env, "LUCKY_STAKED"), depositor.clone()),
+                amount
+            );
+
+            // 3. Mint Receipt Tokens to User
+            if let Some(receipt_token_id) = env.storage().instance().get::<_, Address>(&DataKey::ReceiptToken) {
+                 let receipt_client = token::Client::new(&env, &receipt_token_id);
+                 // Note: Pool contract must be the admin of the Receipt Token to mint
+                 receipt_client.transfer(&self_addr, &depositor, &amount); 
+            }
+
+            // Update internal tracking
+            let supplied: i128 = env.storage().instance().get(&DataKey::SuppliedToBlend).unwrap_or(0);
+            env.storage().instance().set(&DataKey::SuppliedToBlend, &(supplied + amount));
+        }
+
+        // 4. Update User State (Tickets and Balance)
         let period_days: u32 = env.storage().instance().get(&DataKey::PeriodDays).unwrap();
         let tickets_to_add = amount * (period_days as i128);
 
-        let current_balance: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Balance(depositor.clone()))
-            .unwrap_or(0);
-        let current_tickets: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::Tickets(depositor.clone()))
-            .unwrap_or(0);
+        let current_balance: i128 = env.storage().instance().get(&DataKey::Balance(depositor.clone())).unwrap_or(0);
+        let current_tickets: i128 = env.storage().instance().get(&DataKey::Tickets(depositor.clone())).unwrap_or(0);
 
-        let new_balance = current_balance + amount;
-        let new_tickets = current_tickets + tickets_to_add;
-
-        env.storage()
-            .instance()
-            .set(&DataKey::Balance(depositor.clone()), &new_balance);
-        env.storage()
-            .instance()
-            .set(&DataKey::Tickets(depositor.clone()), &new_tickets);
+        env.storage().instance().set(&DataKey::Balance(depositor.clone()), &(current_balance + amount));
+        env.storage().instance().set(&DataKey::Tickets(depositor.clone()), &(current_tickets + tickets_to_add));
 
         let total: i128 = env.storage().instance().get(&DataKey::TotalDeposits).unwrap();
         let total_tickets: i128 = env.storage().instance().get(&DataKey::TotalTickets).unwrap();
 
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalDeposits, &(total + amount));
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalTickets, &(total_tickets + tickets_to_add));
+        env.storage().instance().set(&DataKey::TotalDeposits, &(total + amount));
+        env.storage().instance().set(&DataKey::TotalTickets, &(total_tickets + tickets_to_add));
 
-        // Add to depositors list if new
-        let mut depositors: Vec<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::Depositors)
-            .unwrap_or_else(|| Vec::new(&env));
-
+        // Add to depositors list
+        let mut depositors: Vec<Address> = env.storage().instance().get(&DataKey::Depositors).unwrap_or_else(|| Vec::new(&env));
         let mut found = false;
         for d in depositors.iter() {
-            if d == depositor {
-                found = true;
-                break;
-            }
+            if d == depositor { found = true; break; }
         }
         if !found {
             depositors.push_back(depositor.clone());
@@ -132,14 +152,14 @@ impl LuckyStakePool {
 
     pub fn withdraw(env: Env, depositor: Address, amount: i128) {
         depositor.require_auth();
-        assert!(amount > 0, "amt");
+        assert!(amount > 0, "withdraw amount must be greater than zero");
 
         let balance: i128 = env
             .storage()
             .instance()
             .get(&DataKey::Balance(depositor.clone()))
             .unwrap_or(0);
-        assert!(balance >= amount, "bal");
+        assert!(balance >= amount, "insufficient balance");
 
         let tickets: i128 = env
             .storage()
@@ -173,6 +193,13 @@ impl LuckyStakePool {
             .instance()
             .set(&DataKey::TotalTickets, &(total_tickets - tickets_to_remove));
 
+        // 2. Burn Receipt Tokens from User
+        if let Some(receipt_token_id) = env.storage().instance().get::<_, Address>(&DataKey::ReceiptToken) {
+            let receipt_client = token::Client::new(&env, &receipt_token_id);
+            // Move tokens back to pool (or burn if the token supports it)
+            receipt_client.transfer(&depositor, &env.current_contract_address(), &amount);
+        }
+
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token_id).transfer(
             &env.current_contract_address(),
@@ -184,7 +211,7 @@ impl LuckyStakePool {
     pub fn add_prize(env: Env, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        assert!(amount > 0, "amt");
+        assert!(amount > 0, "prize amount must be greater than zero");
 
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token_id).transfer(
@@ -204,14 +231,14 @@ impl LuckyStakePool {
         admin.require_auth();
 
         let prize: i128 = env.storage().instance().get(&DataKey::PrizeFund).unwrap_or(0);
-        assert!(prize > 0, "prize");
+        assert!(prize > 0, "no prize to distribute");
 
         let total_tickets: i128 = env
             .storage()
             .instance()
             .get(&DataKey::TotalTickets)
             .unwrap_or(0);
-        assert!(total_tickets > 0, "tickets");
+        assert!(total_tickets > 0, "no tickets in pool");
 
         let depositors: Vec<Address> = env
             .storage()
@@ -322,10 +349,14 @@ impl LuckyStakePool {
             .get(&DataKey::BlendPool)
             .unwrap_or_else(|| panic!("blend"));
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        let token_client = token::Client::new(&env, &token_id);
         let self_addr = env.current_contract_address();
 
+        // Verification: Get balance before supply
+        let balance_before = token_client.balance(&self_addr);
+
         let expiration = env.ledger().sequence() + 50_000;
-        token::Client::new(&env, &token_id).approve(&self_addr, &blend_pool, &amount, &expiration);
+        token_client.approve(&self_addr, &blend_pool, &amount, &expiration);
 
         let request = BlendRequest {
             request_type: 0u32,
@@ -344,6 +375,13 @@ impl LuckyStakePool {
         ];
 
         env.invoke_contract::<Val>(&blend_pool, &Symbol::new(&env, "submit_with_allowance"), args);
+
+        // Verification: Confirm balance decreased by the full amount
+        let balance_after = token_client.balance(&self_addr);
+        assert!(
+            balance_after == balance_before - amount,
+            "Verification failed: Funds did not leave the contract for Blend"
+        );
 
         let supplied: i128 = env
             .storage()
@@ -455,6 +493,16 @@ impl LuckyStakePool {
             .instance()
             .get(&DataKey::SuppliedToBlend)
             .unwrap_or(0)
+    }
+
+    pub fn set_receipt_token(env: Env, receipt_token: Address) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::ReceiptToken, &receipt_token);
+    }
+
+    pub fn get_receipt_token(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::ReceiptToken)
     }
 }
 

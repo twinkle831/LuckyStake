@@ -90,7 +90,7 @@
       "totalDeposited": 37,
       "yieldAccrued": 0,
       "participants": 2,
-      "nextDraw": "2026-03-02T12:30:00.000Z",
+      "nextDraw": "2026-03-09T12:30:00.000Z",
       "prizeHistory": [
         {
           "amount": 0.000137,
@@ -101,6 +101,11 @@
           "amount": 0,
           "winner": null,
           "drawnAt": "2026-02-23T08:44:05.293Z"
+        },
+        {
+          "amount": 0,
+          "winner": null,
+          "drawnAt": "2026-03-03T16:57:47.451Z"
         }
       ],
       "suppliedToBlend": 0
@@ -144,6 +149,16 @@
       "txHash": null,
       "participants": 2,
       "totalTickets": 77
+    },
+    "ed2e88e9-85f2-4b7a-9627-c7495c8dc046": {
+      "id": "ed2e88e9-85f2-4b7a-9627-c7495c8dc046",
+      "winner": null,
+      "amount": 0,
+      "poolType": "weekly",
+      "drawnAt": "2026-03-03T16:57:47.451Z",
+      "txHash": null,
+      "participants": 6,
+      "totalTickets": 259
     }
   },
   "draws": {
@@ -169,6 +184,18 @@
       "drawnAt": "2026-02-23T08:44:05.293Z",
       "contractTxHash": null,
       "payoutStatus": "pending",
+      "txHashes": []
+    },
+    "a4a67c79-630e-45d8-bc3a-d6473ef5a2f2": {
+      "id": "a4a67c79-630e-45d8-bc3a-d6473ef5a2f2",
+      "poolType": "weekly",
+      "winner": null,
+      "prizeAmount": 0,
+      "participants": 6,
+      "totalTickets": 259,
+      "drawnAt": "2026-03-03T16:57:47.451Z",
+      "contractTxHash": null,
+      "payoutStatus": "claimable",
       "txHashes": []
     }
   }
