@@ -266,7 +266,7 @@ export async function submitTransaction(signedXdr: string): Promise<string> {
  */
 export async function waitForConfirmation(
   txHash: string,
-  timeoutSeconds: number = 30
+  timeoutSeconds: number = 90
 ): Promise<{ success: boolean; ledger: number }> {
   const startTime = Date.now();
   const timeout = timeoutSeconds * 1000;

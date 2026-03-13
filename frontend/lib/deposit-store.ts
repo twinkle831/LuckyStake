@@ -135,7 +135,11 @@ export function getTotalDeposited(): number {
 
 export function getTotalWithdrawn(): number {
   return deposits
-    .filter((d) => d.type === "withdraw")
+    .filter(
+      (d) =>
+        d.type === "withdraw" ||
+        (d.type === "payout" && d.payoutSubtype === "refund")
+    )
     .reduce((sum, d) => sum + d.amount, 0)
 }
 
@@ -146,7 +150,17 @@ export function getTotalClaimed(): number {
 }
 
 export function getNetDeposited(): number {
-  return getTotalDeposited() - getTotalWithdrawn()
+  const totalDeposited = getTotalDeposited()
+
+  const explicitWithdrawn = deposits
+    .filter((d) => d.type === "withdraw")
+    .reduce((sum, d) => sum + d.amount, 0)
+
+  const refunded = deposits
+    .filter((d) => d.type === "payout" && d.payoutSubtype === "refund")
+    .reduce((sum, d) => sum + d.amount, 0)
+
+  return totalDeposited - (explicitWithdrawn + refunded)
 }
 
 export function getTotalTickets(): number {

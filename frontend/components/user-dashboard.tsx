@@ -184,6 +184,7 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
           icon={<Wallet className="h-3.5 w-3.5" />}
           label="Balance"
           value={`${balance} XLM`}
+          sublabel={network}
         />
         <StatCard
           icon={<TrendingUp className="h-3.5 w-3.5" />}

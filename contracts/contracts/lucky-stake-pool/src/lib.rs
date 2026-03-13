@@ -32,6 +32,7 @@ pub enum DataKey {
     BlendPool,
     SuppliedToBlend,
     ReceiptToken,
+    AdminYield,
 }
 
 #[contracttype]
@@ -274,12 +275,28 @@ impl LuckyStakePool {
             }
         }
 
+        // 85% of prize to winner, 15% retained as admin yield
+        let admin_share: i128 = (prize * 15) / 100;
+        let winner_amount: i128 = prize - admin_share;
+
         let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         token::Client::new(&env, &token_id).transfer(
             &env.current_contract_address(),
             &winner,
-            &prize,
+            &winner_amount,
         );
+
+        // Accumulate admin yield
+        if admin_share > 0 {
+            let current_admin_yield: i128 = env
+                .storage()
+                .instance()
+                .get(&DataKey::AdminYield)
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::AdminYield, &(current_admin_yield + admin_share));
+        }
 
         env.storage().instance().set(&DataKey::PrizeFund, &0i128);
 
@@ -291,6 +308,30 @@ impl LuckyStakePool {
         env.storage().instance().set(&DataKey::DrawNonce, &(nonce + 1));
 
         winner
+    }
+
+    pub fn withdraw_admin_yield(env: Env, to: Address, amount: i128) {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        assert!(amount > 0, "amount must be positive");
+
+        let current_admin_yield: i128 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AdminYield)
+            .unwrap_or(0);
+        assert!(current_admin_yield >= amount, "insufficient admin yield");
+
+        let token_id: Address = env.storage().instance().get(&DataKey::Token).unwrap();
+        token::Client::new(&env, &token_id).transfer(
+            &env.current_contract_address(),
+            &to,
+            &amount,
+        );
+
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminYield, &(current_admin_yield - amount));
     }
 
     pub fn get_balance(env: Env, user: Address) -> i128 {

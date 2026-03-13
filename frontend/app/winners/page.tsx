@@ -43,7 +43,7 @@ function drawToRow(d: DrawRecord) {
     id: d.id,
     address: d.winner ? truncateAddr(d.winner) : "—",
     pool: d.poolType.charAt(0).toUpperCase() + d.poolType.slice(1),
-    prize: `${d.prizeAmount.toLocaleString()} XLM`,
+    prize: `${d.prizeAmount.toLocaleString("en-US")} XLM`,
     date: formatDate(d.drawnAt),
     txHash: d.txHashes[0] ?? null,
   }
@@ -110,7 +110,7 @@ export default function WinnersPage() {
               <div className="rounded-xl bg-card/50 border border-border/30 p-6 backdrop-blur-sm">
                 <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Total Drawn</p>
                 <p className="mt-3 font-display text-3xl font-bold text-foreground">
-                  {totalDrawn.toLocaleString()} XLM
+                  {totalDrawn.toLocaleString("en-US")} XLM
                 </p>
               </div>
               <div className="rounded-xl bg-card/50 border border-border/30 p-6 backdrop-blur-sm">
@@ -120,7 +120,7 @@ export default function WinnersPage() {
               <div className="rounded-xl bg-card/50 border border-border/30 p-6 backdrop-blur-sm">
                 <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Largest Prize</p>
                 <p className="mt-3 font-display text-3xl font-bold text-foreground">
-                  {largestPrize.toLocaleString()} XLM
+                  {largestPrize.toLocaleString("en-US")} XLM
                 </p>
               </div>
             </div>

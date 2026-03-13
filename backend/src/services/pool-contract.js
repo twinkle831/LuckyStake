@@ -22,6 +22,8 @@ const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE ||
   "Public Global Stellar Network ; September 2015";
 const BASE_FEE = 100;
+// Mainnet Soroban txs (e.g. set_blend_pool) can require 200k+ stroops; use 500k so invokes don't fail with txInsufficientFee
+const INVOKE_FEE = Number(process.env.SOROBAN_INVOKE_FEE) || 500000;
 
 const CONTRACTS = {
   weekly: (process.env.POOL_CONTRACT_WEEKLY || "").trim(),
@@ -103,7 +105,7 @@ async function invoke(contractId, method, args = []) {
 
   const op = contract.call(method, ...args);
   let tx = new TransactionBuilder(account, {
-    fee: BASE_FEE.toString(),
+    fee: INVOKE_FEE.toString(),
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(op)
@@ -213,6 +215,24 @@ async function getUserBalance(contractId, userAddress) {
   return v ? Number(v) : 0;
 }
 
+/**
+ * Configure Blend pool address for a given LuckyStake pool contract.
+ * Must be called by the pool admin (ADMIN_SECRET_KEY).
+ */
+async function setBlendPool(contractId, blendPoolAddress) {
+  const blendAddrSc = Address.fromString(blendPoolAddress).toScVal();
+  return invoke(contractId, "set_blend_pool", [blendAddrSc]);
+}
+
+/**
+ * Configure optional receipt token contract (used to mint/burn \"receipt\" tokens
+ * that mirror the user's supplied amount to Blend).
+ */
+async function setReceiptToken(contractId, receiptTokenAddress) {
+  const tokAddrSc = Address.fromString(receiptTokenAddress).toScVal();
+  return invoke(contractId, "set_receipt_token", [tokAddrSc]);
+}
+
 function getContractId(poolType) {
   const id = CONTRACTS[poolType];
   if (!id) throw new Error(`No contract for pool: ${poolType}`);
@@ -263,4 +283,6 @@ module.exports = {
   getNativeXlmContractId,
   initializePool,
   scValI128,
+  setBlendPool,
+  setReceiptToken,
 };
