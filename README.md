@@ -4,6 +4,24 @@ A decentralized savings platform on **Stellar** where users deposit into daily, 
 
 ---
 
+## Demo & Links
+
+| | |
+|---|---|
+| **Live Demo** | [lucky-stake.vercel.app](https://lucky-stake.vercel.app/) |
+| **Demo Video** | [Watch full MVP walkthrough](https://gpai.app/solver?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAb21jcAQlJhpleHRuA2FlbQIxMQBzcnRjBmFwcF9pZA81NjcwNjczNDMzNTI0MjcAAadQthmfPCGDgwRq8z8O4CHOZGHtHO6Ta0oF4Jw9tej2hfk07-psbzViRSxqfQ_aem_1MSA1U_BntIMz5EsRDG6cg) |
+| **User Feedback** | [Feedback Spreadsheet](https://docs.google.com/spreadsheets/d/1d5G4xyWiihDmLMFXYz2xdXJKSg8nLQshpWXQUV2KPyU/edit?gid=0#gid=0) |
+
+### User Wallet Addresses 
+
+```
+GB7EHF7AYS5WAGMUL6DOIOWO2EYWC7MXUMYOJXJJFSU45ZH2CCUG5DPD
+GBPOR4DBZHI43FY3B34O3HGVPX5IJNUFF3PNVAGTN4U4UJYAKEY4GM4D
+GDPG33X6WH57VET5AQJJCMHWVBCNJU5VOVARUEWA77OLNHXGQQLT44E6
+GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ
+GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD
+---
+
 ## What’s in this repo
 
 | Folder | Description |
@@ -153,22 +171,6 @@ If you deployed the pool contracts but **deposits fail with "pool contract may n
 - Set **Render** `CORS_ORIGINS` to your Vercel URL (e.g. `https://your-app.vercel.app`).
 - Open the Vercel URL, connect wallet (mainnet), and test: deposit, draw (cron or manual trigger), claim principal.
 
----
-
-## Docs in this repo
-
-| File | Purpose |
-|------|--------|
-| **[SETUP_WORKFLOW.md](SETUP_WORKFLOW.md)** | **Full setup: what to put in each .env, run order, deploy** |
-| [TEST_COMMANDS.md](TEST_COMMANDS.md) | Contract tests (Rust), backend/frontend commands, E2E test flow, troubleshooting |
-| [backend/RENDER_DEPLOY.md](backend/RENDER_DEPLOY.md) | Deploy backend on Render (mainnet) |
-| [frontend/VERCEL_DEPLOY.md](frontend/VERCEL_DEPLOY.md) | Deploy frontend on Vercel (mainnet) |
-| [agent-api/README.md](agent-api/README.md) | Agent API endpoints, env, profit logic |
-| [NEXT_STEPS.md](NEXT_STEPS.md) | Integration checklist (if present) |
-| [backend/CRON_README.md](backend/CRON_README.md) | Cron setup for draws |
-| [contracts/](contracts/) | Contract build, test, deploy (see contracts’ README/QUICK_START) |
-
----
 
 ## Quick command reference
 
