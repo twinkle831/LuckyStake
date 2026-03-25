@@ -23,6 +23,11 @@ const store = {
   // draws[id] = { id, poolType, winner, prizeAmount, participants, totalTickets,
   //              drawnAt, payoutStatus: "pending"|"complete"|"partial"|"failed", txHashes }
   draws: new Map(),
+
+  // agentStrategies[id] = { id, publicKey, totalAmount, remainingBalance, duration, riskLevel,
+  //                         goalType, poolAllocation, status, createdAt, updatedAt,
+  //                         nextExecutionTime, executionCount, totalDeposited, executionHistory }
+  agentStrategies: new Map(),
 };
 
 function drawClock() {
@@ -119,6 +124,7 @@ function persist() {
     pools: Object.fromEntries(store.pools),
     prizes: Object.fromEntries(store.prizes),
     draws: Object.fromEntries(store.draws),
+    agentStrategies: Object.fromEntries(store.agentStrategies),
   };
   fs.writeFileSync(DB_FILE, JSON.stringify(serializable, null, 2), "utf8");
 }
@@ -138,6 +144,7 @@ function load() {
     store.pools = new Map(Object.entries(raw.pools || {}));
     store.prizes = new Map(Object.entries(raw.prizes || {}));
     store.draws = new Map(Object.entries(raw.draws || {}));
+    store.agentStrategies = new Map(Object.entries(raw.agentStrategies || {}));
   } catch {
     store.users = new Map();
     store.challenges = new Map();
@@ -145,6 +152,7 @@ function load() {
     store.pools = defaultPools();
     store.prizes = new Map();
     store.draws = new Map();
+    store.agentStrategies = new Map();
     persist();
   }
 

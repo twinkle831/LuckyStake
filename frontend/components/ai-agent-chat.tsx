@@ -31,9 +31,10 @@ function displayContent(content: string): string {
 interface AiAgentChatProps {
   open: boolean
   onClose: () => void
+  onStartStrategy?: () => void
 }
 
-export function AiAgentChat({ open, onClose }: AiAgentChatProps) {
+export function AiAgentChat({ open, onClose, onStartStrategy }: AiAgentChatProps) {
   const { address, isConnected } = useWallet()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
@@ -225,6 +226,19 @@ export function AiAgentChat({ open, onClose }: AiAgentChatProps) {
             <p className="text-sm text-destructive rounded-lg bg-destructive/10 px-3 py-2">
               {error}
             </p>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {isConnected && (
+          <div className="shrink-0 border-t border-border px-4 pt-3">
+            <button
+              onClick={onStartStrategy}
+              className="w-full mb-3 px-4 py-2 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors text-sm font-semibold flex items-center justify-center gap-2"
+            >
+              <span>🚀</span>
+              Create Set-and-Forget Strategy
+            </button>
           </div>
         )}
 

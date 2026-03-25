@@ -11,6 +11,7 @@
     "query-pools": "node scripts/query-pool-state.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.24.0",
     "@stellar/stellar-base": "^14.0.4",
     "@stellar/stellar-sdk": "^12.3.0",
     "cors": "^2.8.5",

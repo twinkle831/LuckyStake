@@ -16,6 +16,7 @@ const leaderboardRoutes = require("./routes/leaderboard");
 const userRoutes = require("./routes/users");
 const walletRoutes = require("./routes/wallet");
 const cronRoutes = require("./routes/cron");
+const agentRoutes = require("./routes/agent");
 const { setupWebSocket } = require("./services/websocket");
 const { errorHandler } = require("./middleware/errorHandler");
 
@@ -86,6 +87,7 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/cron", cronRoutes);
+app.use("/api/agent", agentRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -101,6 +103,13 @@ const CRON_INTERVAL_MS = parseInt(process.env.CRON_INTERVAL_MS, 10) || 60 * 60 *
 if (process.env.ADMIN_SECRET_KEY) {
   cronDraw.startCron(CRON_INTERVAL_MS);
   console.log(`Cron: draw checks every ${CRON_INTERVAL_MS / 60000} min`);
+}
+
+// ─── Agent Executor: automated set-and-forget strategies ─────────────────────
+const { startExecutor } = require("./services/agent-executor");
+if (process.env.ENABLE_AGENT_EXECUTOR !== "false") {
+  startExecutor();
+  console.log("Agent Executor: started (runs every 6 hours)");
 }
 
 // ─── Start ───────────────────────────────────────────────────────────────────

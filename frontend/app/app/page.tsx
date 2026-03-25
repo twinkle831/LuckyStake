@@ -9,6 +9,8 @@ import { UserDashboard } from "@/components/user-dashboard"
 import { ConnectWalletModal } from "@/components/connect-wallet-modal"
 import { AppNavbar } from "@/components/app-navbar"
 import { AiAgentChat } from "@/components/ai-agent-chat"
+import { AiAgentOnboarding } from "@/components/ai-agent-onboarding"
+import { AgentStrategyCard } from "@/components/agent-strategy-card"
 import { PoolDetailPanel } from "@/components/pool-detail-panel"
 import { DrawsSection } from "@/components/draws-section"
 import { NetworkBanner } from "@/components/network-banner"
@@ -47,6 +49,8 @@ function AppContent() {
   const [detailPool, setDetailPool] = useState<Pool | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [agentOpen, setAgentOpen] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
+  const [strategies, setStrategies] = useState<any[]>([])
   const [claimableByPool, setClaimableByPool] = useState<Record<string, boolean>>({})
 
   const loading = poolsLoading
@@ -55,10 +59,13 @@ function AppContent() {
   useEffect(() => {
     if (!isConnected) {
       setClaimableByPool({})
+      setStrategies([])
       return
     }
     const token = getToken()
     if (!token) return
+    
+    // Fetch deposits
     fetch(`${API}/api/deposits/my`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -70,6 +77,16 @@ function AppContent() {
         setClaimableByPool(next)
       })
       .catch(() => setClaimableByPool({}))
+    
+    // Fetch agent strategies
+    fetch(`${API}/api/agent/strategies`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.strategies) {
+          setStrategies(data.strategies)
+        }
+      })
+      .catch(() => setStrategies([]))
   }, [isConnected])
 
   function handleDeposit(pool: Pool) {
@@ -184,7 +201,50 @@ function AppContent() {
           (loading ? (
             <DashboardSkeleton />
           ) : (
-            <UserDashboard onWithdraw={handleWithdraw} claimableByPool={claimableByPool} />
+            <>
+              {/* Agent strategies section */}
+              {strategies.length > 0 && (
+                <div className="mb-12">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="font-display text-2xl font-bold text-foreground">
+                      Set-and-Forget Strategies
+                    </h2>
+                    <button
+                      onClick={() => setOnboardingOpen(true)}
+                      className="text-sm px-4 py-2 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors"
+                    >
+                      + New Strategy
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {strategies.map((strategy) => (
+                      <AgentStrategyCard
+                        key={strategy.id}
+                        strategy={strategy}
+                        token={getToken() || ""}
+                        onUpdate={() => {
+                          const token = getToken()
+                          if (!token) return
+                          fetch(`${API}/api/agent/strategies`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                          })
+                            .then((r) => (r.ok ? r.json() : null))
+                            .then((data) => {
+                              if (data?.strategies) setStrategies(data.strategies)
+                            })
+                            .catch(() => {})
+                        }}
+                        onDelete={() => {
+                          setStrategies(strategies.filter((s) => s.id !== strategy.id))
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <UserDashboard onWithdraw={handleWithdraw} claimableByPool={claimableByPool} />
+            </>
           ))}
 
         {/* Draws tab */}
@@ -260,7 +320,22 @@ function AppContent() {
         }}
         claimableByPool={claimableByPool}
       />
-      <AiAgentChat open={agentOpen} onClose={() => setAgentOpen(false)} />
+      <AiAgentChat 
+        open={agentOpen} 
+        onClose={() => setAgentOpen(false)}
+        onStartStrategy={() => {
+          setAgentOpen(false)
+          setOnboardingOpen(true)
+        }}
+      />
+      <AiAgentOnboarding
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onStrategyCreated={(strategy) => {
+          setStrategies([...strategies, strategy])
+          setTab("dashboard")
+        }}
+      />
     </div>
   )
 }
