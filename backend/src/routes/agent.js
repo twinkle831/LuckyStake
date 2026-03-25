@@ -19,9 +19,10 @@ const router = express.Router();
 const { v4: uuidv4 } = require("uuid");
 const auth = require("../middleware/auth");
 const store = require("../services/store");
-const { getAIAllocation } = require("../services/ai-service");
 
-console.log("[Agent Routes] Loaded AI allocation service");
+const AGENT_API_URL = process.env.AGENT_API_URL || "http://localhost:8001";
+
+console.log("[Agent Routes] Using agent-api at", AGENT_API_URL);
 
 // Helper: Calculate next execution time based on pool allocation
 function calculateNextExecutionTime() {
@@ -39,7 +40,7 @@ function getNextPoolType(allocation, executionCount) {
 }
 
 // ─── POST /api/agent/strategy/recommend ──────────────────────────────────────
-// Get AI recommendation for allocation
+// Get AI recommendation for allocation (delegates to agent-api)
 router.post("/strategy/recommend", auth, async (req, res, next) => {
   try {
     const { amount: rawAmount, duration, riskLevel, goalType } = req.body;
@@ -59,12 +60,29 @@ router.post("/strategy/recommend", auth, async (req, res, next) => {
       return res.status(400).json({ error: "goalType must be 'sure-shot' or 'highest-prize'" });
     }
 
-    // Get AI allocation
-    const allocation = await getAIAllocation(amount, duration, riskLevel, goalType);
+    // Call agent-api for allocation recommendation
+    const agentResponse = await fetch(`${AGENT_API_URL}/strategy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount,
+        duration,
+        risk_level: riskLevel,
+        goal_type: goalType,
+      }),
+    });
+
+    if (!agentResponse.ok) {
+      const error = await agentResponse.text();
+      console.error("[Agent Routes] agent-api error:", error);
+      return res.status(500).json({ error: "Failed to get AI allocation recommendation" });
+    }
+
+    const agentData = await agentResponse.json();
 
     res.json({
-      allocation,
-      message: "Allocation recommendation generated",
+      allocation: agentData.allocation,
+      message: agentData.message || "Allocation recommendation generated",
     });
   } catch (err) {
     next(err);
