@@ -21,6 +21,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
 
@@ -61,6 +71,7 @@ export function AgentStrategyCard({
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [nextExecCountdown, setNextExecCountdown] = useState("")
+  const [confirmDialog, setConfirmDialog] = useState<"pause" | "resume" | "withdraw" | null>(null)
 
   useEffect(() => {
     function updateCountdown() {
@@ -79,7 +90,8 @@ export function AgentStrategyCard({
         headers: { "Authorization": `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to pause strategy")
-      toast({ description: "Strategy paused" })
+      toast({ description: "Strategy paused successfully" })
+      setConfirmDialog(null)
       onUpdate?.()
     } catch (err) {
       toast({
@@ -99,7 +111,8 @@ export function AgentStrategyCard({
         headers: { "Authorization": `Bearer ${token}` },
       })
       if (!res.ok) throw new Error("Failed to resume strategy")
-      toast({ description: "Strategy resumed" })
+      toast({ description: "Strategy resumed successfully" })
+      setConfirmDialog(null)
       onUpdate?.()
     } catch (err) {
       toast({
@@ -112,14 +125,6 @@ export function AgentStrategyCard({
   }
 
   async function handleWithdraw() {
-    if (
-      !confirm(
-        `Withdraw $${strategy.remainingBalance.toFixed(2)} XLM remaining? This will stop automatic deposits.`
-      )
-    ) {
-      return
-    }
-
     try {
       setLoading(true)
       const res = await fetch(`${API}/api/agent/strategy/${strategy.id}`, {
@@ -128,6 +133,7 @@ export function AgentStrategyCard({
       })
       if (!res.ok) throw new Error("Failed to withdraw")
       toast({ description: "Funds withdrawn successfully" })
+      setConfirmDialog(null)
       onDelete?.()
     } catch (err) {
       toast({
@@ -184,18 +190,18 @@ export function AgentStrategyCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {strategy.status === "active" && (
-              <DropdownMenuItem onClick={handlePause} disabled={loading}>
+              <DropdownMenuItem onClick={() => setConfirmDialog("pause")} disabled={loading}>
                 <Pause className="mr-2 h-4 w-4" />
                 Pause
               </DropdownMenuItem>
             )}
             {strategy.status === "paused" && (
-              <DropdownMenuItem onClick={handleResume} disabled={loading}>
+              <DropdownMenuItem onClick={() => setConfirmDialog("resume")} disabled={loading}>
                 <Play className="mr-2 h-4 w-4" />
                 Resume
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={handleWithdraw} disabled={loading} className="text-destructive">
+            <DropdownMenuItem onClick={() => setConfirmDialog("withdraw")} disabled={loading} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               Withdraw
             </DropdownMenuItem>
@@ -320,6 +326,58 @@ export function AgentStrategyCard({
           </div>
         </div>
       )}
+
+      {/* Confirmation Dialogs */}
+      <AlertDialog open={confirmDialog === "pause"} onOpenChange={(open) => !open && setConfirmDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pause Strategy?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pausing will stop automatic deposits until you resume. Your remaining balance of {strategy.remainingBalance.toFixed(2)} XLM will be held.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePause} disabled={loading}>Pause</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDialog === "resume"} onOpenChange={(open) => !open && setConfirmDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Resume Strategy?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Resuming will restart automatic deposits every 6 hours from the remaining balance of {strategy.remainingBalance.toFixed(2)} XLM.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResume} disabled={loading}>Resume</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDialog === "withdraw"} onOpenChange={(open) => !open && setConfirmDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Withdraw Funds?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action is permanent. You will withdraw {strategy.remainingBalance.toFixed(2)} XLM and the strategy will be deleted. No more automatic deposits will occur.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleWithdraw} 
+              disabled={loading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Withdraw Funds
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
