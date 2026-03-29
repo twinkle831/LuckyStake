@@ -25,7 +25,7 @@ interface Props {
   onSuccess: () => void
 }
 
-type Step = "input" | "confirm" | "success"
+type Step = "input" | "review" | "confirm" | "success"
 
 /** Deposit from backend /my with claimable flag */
 interface MyDeposit {
@@ -123,7 +123,7 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-        onClick={step !== "confirm" ? handleClose : undefined}
+        onClick={step !== "confirm" && step !== "review" ? handleClose : undefined}
         aria-hidden="true"
       />
 
@@ -168,11 +168,11 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
                 )}
 
                 <button
-                  onClick={handleConfirm}
+                  onClick={() => setStep("review")}
                   disabled={!canClaim}
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Claim {claimableDeposit.amount.toLocaleString()} XLM
+                  Review Claim
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </>
@@ -195,7 +195,56 @@ export function WithdrawModal({ pool, open, onClose, onSuccess }: Props) {
           </>
         )}
 
-        {/* Step: Confirm */}
+        {/* Step: Review */}
+        {step === "review" && claimableDeposit && (
+          <>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+                <AlertCircle className="h-5 w-5 text-accent" />
+              </div>
+              <h2 className="font-display text-xl font-bold text-foreground">
+                Confirm Claim
+              </h2>
+            </div>
+
+            <div className="bg-secondary/30 border border-border/50 rounded-xl p-5 mb-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                Please review your claim details. This transaction cannot be undone.
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Amount</span>
+                  <span className="font-display font-bold text-lg text-foreground">{claimableDeposit.amount.toLocaleString()} XLM</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Pool</span>
+                  <span className="font-semibold text-foreground">{pool.name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Destination</span>
+                  <span className="font-mono text-xs text-foreground">{address?.slice(0, 8)}...{address?.slice(-8)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep("input")}
+                className="flex-1 rounded-xl border border-border py-3 text-sm font-medium text-foreground transition-all hover:bg-secondary"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 rounded-xl bg-accent py-3 text-sm font-semibold text-accent-foreground transition-all hover:opacity-90"
+              >
+                Confirm & Claim
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Step: Confirm (Processing) */}
         {step === "confirm" && claimableDeposit && (
           <div className="flex flex-col items-center justify-center py-8">
             <Loader2 className="h-12 w-12 animate-spin text-accent mb-6" />
