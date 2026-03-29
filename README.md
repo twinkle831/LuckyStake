@@ -4,12 +4,15 @@ A decentralized savings platform on **Stellar** where users deposit into daily, 
 
 ---
 
-## Demo & Links
+## Submission Checklist 
 
 | | |
 |---|---|
+| **Github Repository** | [Public Github Repo](https://github.com/twinkle831/LuckyStake) |
 | **Live Demo** | [lucky-stake.vercel.app](https://lucky-stake.vercel.app/) |
 | **Demo Video** | [Watch full MVP walkthrough](https://gpai.app/solver?utm_source=ig&utm_medium=social&utm_content=link_in_bio&fbclid=PAb21jcAQlJhpleHRuA2FlbQIxMQBzcnRjBmFwcF9pZA81NjcwNjczNDMzNTI0MjcAAadQthmfPCGDgwRq8z8O4CHOZGHtHO6Ta0oF4Jw9tej2hfk07-psbzViRSxqfQ_aem_1MSA1U_BntIMz5EsRDG6cg) |
+| **Architecture** | [Architecture](https://github.com/twinkle831/LuckyStake/blob/main/luckystake-architecture.png) |
+| **10+ Meaningful Commits** | [View Commit History](https://github.com/twinkle831/LuckyStake/commits/main/) |
 | **User Feedback** | [Feedback Spreadsheet](https://docs.google.com/spreadsheets/d/1d5G4xyWiihDmLMFXYz2xdXJKSg8nLQshpWXQUV2KPyU/edit?gid=0#gid=0) |
 
 ### User Wallet Addresses 
@@ -22,6 +25,41 @@ GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ
 GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD
 ---
 
+## User Feedback Implementation
+
+We collected feedback from users and implemented key improvements to enhance usability and trust in the platform.
+
+### Selected Feedback Statements
+
+1. **"The winner isn't shown to us"**  
+   → Users wanted better visibility of results.
+
+2. **"I accidentally withdrew my XLMs and there was no confirmation"**  
+   → Users requested safeguards for financial actions.
+
+---
+### 🚀 Implemented Improvements
+
+#### 1. Winner Notification System
+- Added real-time **notifications for winner announcements**
+- Improves transparency and user engagement
+- Ensures users are always informed about draw results  
+
+**Commit ID:** `cc910e6fd17b98b57f8e52a0ff1138a4b708c45f`  
+**Commit Message:**  
+`userFeedback : added notification for winner announcement`
+
+---
+#### 2. Withdrawal Confirmation Dialog
+- Added a **confirmation dialog box before withdrawing XLM**
+- Prevents accidental fund withdrawals
+- Improves user safety and confidence  
+
+**Commit ID:** `8f741532a49828e5c57ff955bf9c917d6ad02df8`  
+**Commit Message:**  
+`userFeedback : added review modal for deposit and withdraw`
+
+---
 ## What’s in this repo
 
 | Folder | Description |
