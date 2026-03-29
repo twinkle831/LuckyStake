@@ -29,16 +29,17 @@ export function DrawNotificationProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"
     const wsProtocol = API.startsWith("https") ? "wss" : "ws"
-    const wsUrl = new URL(API)
-    wsUrl.protocol = wsProtocol
-    wsUrl.pathname = "/"
+    
+    // Extract hostname and port from API URL
+    const apiUrl = new URL(API)
+    const wsUrl = `${wsProtocol}://${apiUrl.host}`
 
     let ws: WebSocket | null = null
     let reconnectTimeout: NodeJS.Timeout
 
     function connect() {
       try {
-        ws = new WebSocket(wsUrl.toString())
+        ws = new WebSocket(wsUrl)
 
         ws.onopen = () => {
           console.log("[DrawNotificationContext] WebSocket connected")
@@ -62,7 +63,8 @@ export function DrawNotificationProvider({ children }: { children: ReactNode }) 
         }
 
         ws.onerror = (error) => {
-          console.error("[DrawNotificationContext] WebSocket error:", error)
+          const event = error as Event
+          console.error("[DrawNotificationContext] WebSocket error - Connection failed. URL:", wsUrl, "Error:", event?.type || "Unknown error")
         }
 
         ws.onclose = () => {
