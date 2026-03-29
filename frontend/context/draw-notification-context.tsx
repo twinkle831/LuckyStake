@@ -32,7 +32,7 @@ export function DrawNotificationProvider({ children }: { children: ReactNode }) 
     
     // Extract hostname and port from API URL
     const apiUrl = new URL(API)
-    const wsUrl = `${wsProtocol}://${apiUrl.host}`
+    const wsUrl = `${wsProtocol}://${apiUrl.host}/ws`
 
     let ws: WebSocket | null = null
     let reconnectTimeout: NodeJS.Timeout
