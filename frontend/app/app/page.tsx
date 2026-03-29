@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useWallet } from "@/context/wallet-context"
+import { useDrawNotification } from "@/context/draw-notification-context"
 import { AppPoolCards } from "@/components/app-pool-cards"
 import { DepositModal } from "@/components/deposit-modal"
 import { WithdrawModal } from "@/components/withdraw-modal"
@@ -12,6 +13,7 @@ import { AiAgentChat } from "@/components/ai-agent-chat"
 import { PoolDetailPanel } from "@/components/pool-detail-panel"
 import { DrawsSection } from "@/components/draws-section"
 import { NetworkBanner } from "@/components/network-banner"
+import { DrawNotificationBanner } from "@/components/draw-notification-banner"
 import { ToastProvider, useToast } from "@/components/toast-provider"
 import {
   PoolGridSkeleton,
@@ -38,6 +40,7 @@ function AppContent() {
   const { isConnected } = useWallet()
   const { toast } = useToast()
   const { pools, loading: poolsLoading } = usePools()
+  const { notification, clearNotification } = useDrawNotification()
   const [tab, setTab] = useState<Tab>("pools")
   const [walletModalOpen, setWalletModalOpen] = useState(false)
   const [depositPool, setDepositPool] = useState<Pool | null>(null)
@@ -108,6 +111,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <NetworkBanner />
+      <DrawNotificationBanner notification={notification} onDismiss={clearNotification} />
       <AppNavbar
         onConnectWallet={() => setWalletModalOpen(true)}
         activeTab={tab}

@@ -4,7 +4,7 @@ const path = require("path");
 const DB_FILE = path.join(__dirname, "..", "..", "data", "store.json");
 
 const store = {
-  // users[publicKey] = { publicKey, joinedAt, totalDeposited, tickets }
+  // users[publicKey] = { publicKey, joinedAt, totalDeposited, tickets, email, emailNotificationsEnabled, notificationPreferences }
   users: new Map(),
 
   // challenges[nonce] = { publicKey, nonce, createdAt, used }
@@ -23,6 +23,9 @@ const store = {
   // draws[id] = { id, poolType, winner, prizeAmount, participants, totalTickets,
   //              drawnAt, payoutStatus: "pending"|"complete"|"partial"|"failed", txHashes }
   draws: new Map(),
+
+  // notifications[id] = { id, userId, poolType, email, subject, type: "winner"|"participant", drawnAt, sentAt, status: "sent"|"failed", error }
+  notifications: new Map(),
 };
 
 function drawClock() {
@@ -119,6 +122,7 @@ function persist() {
     pools: Object.fromEntries(store.pools),
     prizes: Object.fromEntries(store.prizes),
     draws: Object.fromEntries(store.draws),
+    notifications: Object.fromEntries(store.notifications),
   };
   fs.writeFileSync(DB_FILE, JSON.stringify(serializable, null, 2), "utf8");
 }
@@ -138,6 +142,7 @@ function load() {
     store.pools = new Map(Object.entries(raw.pools || {}));
     store.prizes = new Map(Object.entries(raw.prizes || {}));
     store.draws = new Map(Object.entries(raw.draws || {}));
+    store.notifications = new Map(Object.entries(raw.notifications || {}));
   } catch {
     store.users = new Map();
     store.challenges = new Map();
@@ -145,6 +150,7 @@ function load() {
     store.pools = defaultPools();
     store.prizes = new Map();
     store.draws = new Map();
+    store.notifications = new Map();
     persist();
   }
 
