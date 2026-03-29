@@ -39,6 +39,7 @@ import { stellarExpertTxUrl, isStellarTxHash } from "@/lib/stellar-explorer"
 import { useMyResults } from "@/hooks/use-my-results"
 import type { MyResultsData } from "@/hooks/use-my-results"
 import { useTransactionHistory } from "@/hooks/use-transaction-history"
+import { NotificationPreferences } from "./notification-preferences"
 
 function useDeposits() {
   return useSyncExternalStore(subscribe, getDeposits, getDeposits)
@@ -277,6 +278,9 @@ export function UserDashboard({ onWithdraw, claimableByPool = {} }: Props) {
           </div>
         </div>
       )}
+
+      {/* Notification Preferences */}
+      <NotificationPreferences />
 
       {/* Transaction history */}
       <div className="rounded-2xl border border-border bg-card/50 backdrop-blur-sm overflow-hidden">

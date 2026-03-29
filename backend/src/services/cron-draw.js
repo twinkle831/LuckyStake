@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require("uuid");
 const store = require("./store");
 const poolContract = require("./pool-contract");
 const payoutService = require("./payout-service");
+const emailService = require("./email-service");
 
 const POOL_TYPES = ["weekly", "biweekly", "monthly"];
 
@@ -222,6 +223,100 @@ async function _recordAndPayout(poolType, prizeAmount, winner, activeDeposits, r
     const { broadcast } = require("./websocket");
     broadcast("draw_complete", { poolType, draw: drawRecord, winner, prizeAmount });
   } catch (_) { }
+
+  // Send email notifications to participants
+  try {
+    const now = new Date().toISOString();
+    
+    // Collect unique participants with their email preferences
+    const participantsMap = new Map();
+    for (const deposit of activeDeposits) {
+      const user = store.users.get(deposit.publicKey);
+      if (user && user.email && user.emailNotificationsEnabled) {
+        const preferences = user.notificationPreferences || { weekly: true, biweekly: true, monthly: true };
+        if (preferences[poolType]) {
+          participantsMap.set(deposit.publicKey, { email: user.email, isWinner: deposit.publicKey === winner });
+        }
+      }
+    }
+
+    // Send winner notification
+    if (winner) {
+      const winnerUser = store.users.get(winner);
+      if (winnerUser && winnerUser.email && winnerUser.emailNotificationsEnabled) {
+        const preferences = winnerUser.notificationPreferences || { weekly: true, biweekly: true, monthly: true };
+        if (preferences[poolType]) {
+          const emailResult = await emailService.sendWinnerNotification(
+            winnerUser.email,
+            poolType,
+            prizeAmount
+          );
+          if (emailResult.success || emailResult.skipped) {
+            emailService.logNotification(
+              winner,
+              poolType,
+              winnerUser.email,
+              `Congratulations! You won ${prizeAmount} XLM in the ${poolType} draw!`,
+              "winner",
+              now,
+              "sent"
+            );
+          } else {
+            emailService.logNotification(
+              winner,
+              poolType,
+              winnerUser.email,
+              `Congratulations! You won ${prizeAmount} XLM in the ${poolType} draw!`,
+              "winner",
+              now,
+              "failed",
+              emailResult.error
+            );
+          }
+        }
+      }
+    }
+
+    // Send draw completion notifications to all participants
+    for (const [publicKey, participantInfo] of participantsMap.entries()) {
+      if (publicKey === winner) continue; // Already sent winner notification
+      
+      const emailResult = await emailService.sendDrawCompletionNotification(
+        participantInfo.email,
+        poolType,
+        winner,
+        prizeAmount,
+        activeDeposits.length
+      );
+
+      if (emailResult.success || emailResult.skipped) {
+        emailService.logNotification(
+          publicKey,
+          poolType,
+          participantInfo.email,
+          `${poolType.charAt(0).toUpperCase() + poolType.slice(1)} LuckyStake Draw Completed`,
+          "participant",
+          now,
+          "sent"
+        );
+      } else {
+        emailService.logNotification(
+          publicKey,
+          poolType,
+          participantInfo.email,
+          `${poolType.charAt(0).toUpperCase() + poolType.slice(1)} LuckyStake Draw Completed`,
+          "participant",
+          now,
+          "failed",
+          emailResult.error
+        );
+      }
+    }
+
+    console.log(`[cron-draw] ${poolType}: Email notifications processed (${participantsMap.size} participants)`);
+  } catch (emailError) {
+    console.error(`[cron-draw] ${poolType}: Error sending email notifications:`, emailError.message);
+  }
 
   store.advanceNextDraw(poolType);
   return results;

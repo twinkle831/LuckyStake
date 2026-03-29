@@ -16,6 +16,7 @@ const leaderboardRoutes = require("./routes/leaderboard");
 const userRoutes = require("./routes/users");
 const walletRoutes = require("./routes/wallet");
 const cronRoutes = require("./routes/cron");
+const notificationRoutes = require("./routes/notifications");
 const { setupWebSocket } = require("./services/websocket");
 const { errorHandler } = require("./middleware/errorHandler");
 
@@ -86,6 +87,7 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/wallet", walletRoutes);
 app.use("/api/cron", cronRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((req, res) => {

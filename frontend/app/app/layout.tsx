@@ -1,4 +1,5 @@
 import { WalletProvider } from "@/context/wallet-context"
+import { DrawNotificationProvider } from "@/context/draw-notification-context"
 
 export const metadata = {
   title: "LuckyStake App - Prize Pools & Dashboard",
@@ -7,5 +8,9 @@ export const metadata = {
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>
+  return (
+    <WalletProvider>
+      <DrawNotificationProvider>{children}</DrawNotificationProvider>
+    </WalletProvider>
+  )
 }
