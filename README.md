@@ -28,15 +28,17 @@ GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD
 
 ## User Feedback Implementation
 
-We collected feedback from users and implemented key improvements to enhance usability and trust in the platform.
+We collected feedback from real users testing the platform and implemented key improvements to enhance usability and trust.
 
-### Selected Feedback Statements
+### Feedback Table
 
-1. **"The winner isn't shown to us"**  
-   → Users wanted better visibility of results.
-
-2. **"I accidentally withdrew my XLMs and there was no confirmation"**  
-   → Users requested safeguards for financial actions.
+| User Name | User Email | User Wallet Address | User Feedback | Commit ID |
+|-----------|------------|---------------------|---------------|-----------|
+| Rajdeep | rajdeepsingha384@gmail.com | `GB7EHF7AYS5WAGMUL6DOIOWO2EYWC7MXUMYOJXJJFSU45ZH2CCUG5DPD` | More pools should be there | — |
+| Rudransh | rudranshg07@gmail.com | `GBPOR4DBZHI43FY3B34O3HGVPX5IJNUFF3PNVAGTN4U4UJYAKEY4GM4D` | Need to give more prompt responses; try integrating Tambo AI | — |
+| Dipan Srimany | dipansrimany@gmail.com | `GDPG33X6WH57VET5AQJJCMHWVBCNJU5VOVARUEWA77OLNHXGQQLT44E6` | The mathematical logic in the deposit and withdraw functions needs fixing for multi-user scaling; suggested adding Nginx | — |
+| Ayush | ayyugoyal@gmail.com | `GD32GMVNZ4464WAZNSVAYUD2YCWS2WWB7HYTXNHZFJIEYSY7YYOFENXJ` | The winner isn't shown to us | [`cc910e6`](https://github.com/twinkle831/LuckyStake/commit/cc910e6fd17b98b57f8e52a0ff1138a4b708c45f) |
+| Shaswat Srivastava | wsshashwat12@gmail.com | `GCUMGWRFYVA4OKRWWB7AXOTOPFR25ZWN6GA6FYIASPW6E2ZQ5OFVJSGD` | I accidentally withdrew my XLMs and there was no confirmation | [`8f74153`](https://github.com/twinkle831/LuckyStake/commit/8f741532a49828e5c57ff955bf9c917d6ad02df8) |
 
 ---
 ### 🚀 Implemented Improvements
@@ -47,21 +49,21 @@ We collected feedback from users and implemented key improvements to enhance usa
 - Ensures users are always informed about draw results  
 
 **Commit ID:** `cc910e6fd17b98b57f8e52a0ff1138a4b708c45f`  
-**Commit Message:**  
-`userFeedback : added notification for winner announcement`
+**Commit Message:** `userFeedback : added notification for winner announcement`
 
 ---
+
 #### 2. Withdrawal Confirmation Dialog
 - Added a **confirmation dialog box before withdrawing XLM**
 - Prevents accidental fund withdrawals
 - Improves user safety and confidence  
 
 **Commit ID:** `8f741532a49828e5c57ff955bf9c917d6ad02df8`  
-**Commit Message:**  
-`userFeedback : added review modal for deposit and withdraw`
+**Commit Message:** `userFeedback : added review modal for deposit and withdraw`
 
 ---
-## What’s in this repo
+
+## What's in this repo
 
 | Folder | Description |
 |--------|-------------|
@@ -175,9 +177,9 @@ Frontend: **http://localhost:3000**
 1. Open **http://localhost:3000**, connect your Stellar wallet (same network as env: mainnet or testnet).
 2. **Deposit:** pick a pool → Deposit → enter amount → sign in wallet. Check the transaction hash and Stellar Expert link.
 3. **Draw (when period ended):** trigger cron (see [TEST_COMMANDS.md](TEST_COMMANDS.md)) or wait for scheduled cron. Winner gets prize on-chain; all depositors can claim principal.
-4. **Claim principal:** Dashboard → “Claim principal” for the pool → sign contract `withdraw()` → confirm principal and tx hash in wallet.
+4. **Claim principal:** Dashboard → "Claim principal" for the pool → sign contract `withdraw()` → confirm principal and tx hash in wallet.
 
-If everything works locally, you’re ready to deploy.
+If everything works locally, you're ready to deploy.
 
 ---
 
@@ -221,4 +223,3 @@ If you deployed the pool contracts but **deposits fail with "pool contract may n
 | Start frontend | `cd frontend && npm install && npm run dev` |
 
 See [SETUP_WORKFLOW.md](SETUP_WORKFLOW.md) for env vars and full workflow.
-
